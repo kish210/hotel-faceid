@@ -1,0 +1,87 @@
+"""Photo-based guest search: forward the photo to face-service for an
+embedding, then run the same cosine-match query used at the door."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import requests
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..config import settings
+from ..models import FaceEmbedding, Person, PersonRole
+from ..schemas import FaceSearchMatch
+from . import vectors
+
+log = logging.getLogger(__name__)
+
+SEARCH_LIMIT = 10
+MIN_SIMILARITY = 0.20
+
+
+class FaceSearchError(Exception):
+    """Raised when the embedding service cannot process the request."""
+
+
+def embed_photo(data: bytes, content_type: str) -> dict[str, Any] | None:
+    """Ask face-service to build a face vector from an uploaded photo.
+
+    Returns the embedding payload, or None when the photo contained no
+    usable face. Raises FaceSearchError when the service is unreachable.
+    """
+    try:
+        response = requests.post(
+            f"{settings.face_service_url}/embed",
+            files={"file": ("photo", data, content_type)},
+            timeout=30,
+        )
+    except requests.RequestException:
+        log.warning("face-service is unreachable at %s", settings.face_service_url, exc_info=True)
+        raise FaceSearchError("سرویس تشخیص چهره در دسترس نیست") from None
+
+    if response.status_code == 422:
+        return None  # image decoded, but no face found
+    if response.status_code != 200:
+        log.warning("face-service embed failed with status %s", response.status_code)
+        raise FaceSearchError("سرویس تشخیص چهره در دسترس نیست")
+    return response.json()
+
+
+def search_guests(
+    db: Session, data: bytes, content_type: str
+) -> tuple[list[FaceSearchMatch], float | None]:
+    result = embed_photo(data, content_type)
+    if result is None:
+        return [], None
+
+    rows = db.execute(
+        select(FaceEmbedding, Person)
+        .join(Person, Person.id == FaceEmbedding.person_id)
+        .where(Person.deleted_at.is_(None), Person.merged_into.is_(None))
+    ).all()
+
+    if not rows:
+        return [], result.get("quality")
+
+    sims = vectors.cosine_similarities(result["embedding"], [face.embedding for face, _ in rows])
+    order = sorted(range(len(rows)), key=lambda i: sims[i], reverse=True)
+
+    matches: list[FaceSearchMatch] = []
+    for i in order[:SEARCH_LIMIT]:
+        similarity = float(sims[i])
+        if similarity < MIN_SIMILARITY:
+            continue
+        person = rows[i][1]
+        matches.append(
+            FaceSearchMatch(
+                person_id=person.id,
+                display_name=person.display_name,
+                role=person.role,
+                room_number=person.room_number,
+                reference_image=person.reference_image,
+                similarity=round(similarity, 4),
+            )
+        )
+    return matches, result.get("quality")

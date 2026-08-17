@@ -1,0 +1,39 @@
+# --- Environment & secrets (never commit) ---
+.env
+
+# --- Standalone build artefacts (huge binaries) ---
+standalone/runtime/
+standalone/models/
+standalone/data/
+standalone/web/dist/
+HotelFaceID-Standalone.zip
+standalone/installer/
+standalone/*.db
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Node / web ---
+web/node_modules/
+web/dist/
+npm-debug.log*
+
+# --- Docker state ---
+postgres_data/
+
+# --- OS / editor ---
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/
+
+# --- Installer leftovers ---
+unins000.exe
+unins000.dat
+
+# --- Logs ---
+*.log
