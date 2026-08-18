@@ -11,14 +11,14 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 DefaultDirName={autopf}\Hotel FaceID
 DefaultGroupName={#MyAppName}
-UninstallDisplayIcon={app}\web\dist\favicon.ico
-Compression=lzma2/ultra
+UninstallDisplayIcon={app}\app.ico
+Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 OutputDir=installer
 OutputBaseFilename=HotelFaceID-Setup
-SetupIconFile=web\dist\favicon.ico
+SetupIconFile=app.ico
 WizardStyle=modern
 
 [Languages]
