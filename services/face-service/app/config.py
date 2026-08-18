@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     min_face_size: int = 60
     frame_sample_rate: int = 5
 
+    # Gender / age estimation (InsightFace genderage model)
+    gender_detection: bool = True
+    gender_min_quality: float = 0.35
+
     # InsightFace
     onnx_provider: str = "CPUExecutionProvider"
     model_pack: str = "buffalo_l"

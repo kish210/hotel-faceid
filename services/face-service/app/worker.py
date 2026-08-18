@@ -86,6 +86,8 @@ class CameraWorker(threading.Thread):
                 confidence=face.det_score,
                 quality=face.quality,
                 direction_hint=self.camera.direction_for_purpose(),
+                gender=face.gender,
+                age=face.age,
             )
 
     # -------------------------------------------------------- edge-event path
@@ -114,6 +116,8 @@ class CameraWorker(threading.Thread):
                     confidence=event.confidence or face.det_score,
                     quality=face.quality,
                     direction_hint=event.direction or self.camera.direction_for_purpose(),
+                    gender=face.gender,
+                    age=face.age,
                 )
 
     # ------------------------------------------------------------- internals

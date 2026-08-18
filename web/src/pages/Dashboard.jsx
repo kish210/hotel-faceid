@@ -12,6 +12,8 @@ import {
 import {
   Users,
   UserCheck,
+  Mars,
+  Venus,
   Briefcase,
   BedDouble,
   LogIn,
@@ -81,8 +83,8 @@ export default function Dashboard() {
     return (
       <div className="grid gap-4">
         <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
@@ -109,10 +111,12 @@ export default function Dashboard() {
         </div>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat icon={Users} label="نفرات حاضر در هتل" value={occupancy?.total ?? 0} highlight />
         <Stat icon={UserCheck} label="مهمانان حاضر" value={occupancy?.guests ?? 0} />
         <Stat icon={Briefcase} label="کارکنان حاضر" value={occupancy?.staff ?? 0} />
+        <Stat icon={Mars} label="آقایان حاضر" value={occupancy?.males ?? 0} />
+        <Stat icon={Venus} label="بانوان حاضر" value={occupancy?.females ?? 0} />
         <Stat icon={BedDouble} label="اقامت‌های فعال" value={data.active_stays} />
         <Stat icon={LogIn} label="ورود امروز" value={data.today_entries} />
         <Stat icon={LogOut} label="خروج امروز" value={data.today_exits} />

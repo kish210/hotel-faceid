@@ -25,6 +25,60 @@ class Base(DeclarativeBase):
     pass
 
 
+def _add_missing_columns() -> None:
+    """Add columns introduced after a database was first created.
+
+    `create_all` only ever creates missing *tables*, so an installation that
+    predates a new column keeps running against the old shape until the column
+    is added. Every type here is portable between SQLite and Postgres.
+    """
+    from sqlalchemy import inspect, text
+
+    postgres = engine.dialect.name == "postgresql"
+    # The Postgres schema (db/init/001_schema.sql) uses native enum types; the
+    # SQLite one stores plain text.
+    gender_type = "person_gender" if postgres else "VARCHAR(10)"
+    json_type = "JSONB" if postgres else "TEXT"
+
+    additions: dict[str, dict[str, str]] = {
+        "persons": {
+            "gender": f"{gender_type} NOT NULL DEFAULT 'unknown'",
+            "gender_votes": json_type,
+            "gender_manual": "BOOLEAN NOT NULL DEFAULT FALSE",
+            "age_estimate": "INTEGER",
+        },
+        "cameras": {
+            "model": "TEXT",
+            "firmware": "TEXT",
+            "serial_number": "TEXT",
+        },
+    }
+
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+
+    with engine.begin() as connection:
+        if postgres and "persons" in tables:
+            connection.execute(
+                text(
+                    "DO $$ BEGIN "
+                    "CREATE TYPE person_gender AS ENUM ('male', 'female', 'unknown'); "
+                    "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+                )
+            )
+        if postgres and "cameras" in tables:
+            # Brands added after the schema was first created.
+            connection.execute(text("ALTER TYPE camera_brand ADD VALUE IF NOT EXISTS 'axis'"))
+
+        for table, columns in additions.items():
+            if table not in tables:
+                continue
+            existing = {column["name"] for column in inspector.get_columns(table)}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
 def init_db() -> None:
     """Create tables and seed the admin user (SQLite path)."""
     from . import models  # noqa: F401  (register tables with Base.metadata)
@@ -32,6 +86,7 @@ def init_db() -> None:
     from sqlalchemy import select
 
     Base.metadata.create_all(engine)
+    _add_missing_columns()
     with SessionLocal() as db:
         existing = db.scalar(select(models.User).where(models.User.username == "admin"))
         if existing is None:

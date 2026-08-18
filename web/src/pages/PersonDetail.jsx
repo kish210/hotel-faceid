@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Save } from "lucide-react";
 import { api } from "../api.js";
-import { ROLE_LABELS, formatDate, formatDateTime, mediaUrl } from "../format.js";
+import { GENDER_LABELS, ROLE_LABELS, formatDate, formatDateTime, mediaUrl } from "../format.js";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,7 @@ export default function PersonDetail() {
         setDraft({
           display_name: p.display_name || "",
           role: p.role,
+          gender: p.gender || "unknown",
           room_number: p.room_number || "",
           phone: p.phone || "",
         });
@@ -140,6 +141,23 @@ export default function PersonDetail() {
                 </select>
               </div>
               <div className="grid gap-2">
+                <Label>جنسیت</Label>
+                <select
+                  value={draft.gender}
+                  onChange={(e) => setDraft({ ...draft, gender: e.target.value })}
+                  className="bg-input border-input h-9 rounded-md border px-3 text-sm"
+                >
+                  {Object.entries(GENDER_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <p className="text-muted-foreground text-xs">
+                  {person.gender_manual
+                    ? "به‌صورت دستی تعیین شده است."
+                    : "به‌صورت خودکار از روی تصویر تشخیص داده می‌شود؛ تغییر دستی جایگزین آن می‌شود."}
+                </p>
+              </div>
+              <div className="grid gap-2">
                 <Label>شماره اتاق</Label>
                 <Input value={draft.room_number} onChange={(e) => setDraft({ ...draft, room_number: e.target.value })} />
               </div>
@@ -160,6 +178,12 @@ export default function PersonDetail() {
             <StatCard label="وضعیت" value={person.present ? "داخل هتل" : "خارج"} highlight={person.present} />
             <StatCard label="شب‌های اقامت فعلی" value={person.current_stay_nights} />
             <StatCard label="مجموع شب‌های اقامت" value={person.total_nights} />
+            <StatCard
+              label="جنسیت / سن تخمینی"
+              value={`${GENDER_LABELS[person.gender] || GENDER_LABELS.unknown}${
+                person.age_estimate ? ` · ${person.age_estimate} سال` : ""
+              }`}
+            />
             <StatCard label="اولین مشاهده" value={formatDate(person.first_seen_at)} />
           </div>
 

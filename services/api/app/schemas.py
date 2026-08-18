@@ -3,7 +3,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models import CameraBrand, CameraPurpose, EventDirection, PersonRole, UserRole
+from .models import (
+    CameraBrand,
+    CameraPurpose,
+    EventDirection,
+    PersonGender,
+    PersonRole,
+    UserRole,
+)
 
 
 class ORMModel(BaseModel):
@@ -28,6 +35,9 @@ class PersonOut(ORMModel):
     id: uuid.UUID
     display_name: str | None
     role: PersonRole
+    gender: PersonGender = PersonGender.unknown
+    gender_manual: bool = False
+    age_estimate: int | None = None
     room_number: str | None
     phone: str | None
     reference_image: str | None
@@ -38,6 +48,9 @@ class PersonOut(ORMModel):
 class PersonUpdate(BaseModel):
     display_name: str | None = None
     role: PersonRole | None = None
+    gender: PersonGender | None = Field(
+        default=None, description="Operator override; stops automatic gender updates"
+    )
     room_number: str | None = None
     phone: str | None = None
 
@@ -85,6 +98,8 @@ class RecognizeRequest(BaseModel):
     quality: float | None = None
     image_base64: str | None = Field(default=None, description="JPEG face crop, base64")
     direction_hint: EventDirection | None = None
+    gender: PersonGender | None = Field(default=None, description="Estimated by the face engine")
+    age: int | None = Field(default=None, ge=0, le=120, description="Estimated age in years")
 
 
 class RecognizeResponse(BaseModel):
@@ -94,6 +109,7 @@ class RecognizeResponse(BaseModel):
     event_id: int | None
     direction: EventDirection | None
     debounced: bool = False
+    gender: PersonGender = PersonGender.unknown
 
 
 # ------------------------------------------------------------------- stay
@@ -111,6 +127,7 @@ class GuestRow(BaseModel):
     person_id: uuid.UUID
     display_name: str | None
     role: PersonRole
+    gender: PersonGender = PersonGender.unknown
     room_number: str | None
     reference_image: str | None
     first_entry: datetime
@@ -123,6 +140,9 @@ class GuestRow(BaseModel):
 class CameraBase(BaseModel):
     name: str
     brand: CameraBrand = CameraBrand.onvif
+    model: str | None = None
+    firmware: str | None = None
+    serial_number: str | None = None
     purpose: CameraPurpose = CameraPurpose.bidirectional
     location: str | None = None
     host: str
@@ -135,11 +155,18 @@ class CameraBase(BaseModel):
 
 class CameraCreate(CameraBase):
     password: str | None = None
+    autodetect: bool = Field(
+        default=True,
+        description="Probe the device for brand/model before saving, when reachable",
+    )
 
 
 class CameraUpdate(BaseModel):
     name: str | None = None
     brand: CameraBrand | None = None
+    model: str | None = None
+    firmware: str | None = None
+    serial_number: str | None = None
     purpose: CameraPurpose | None = None
     location: str | None = None
     host: str | None = None
@@ -157,6 +184,31 @@ class CameraOut(ORMModel, CameraBase):
     last_seen_at: datetime | None
 
 
+# --------------------------------------------------------- camera autodetect
+class CameraProbeRequest(BaseModel):
+    """Credentials for a one-off identification request against a device."""
+
+    host: str
+    port: int = 80
+    username: str | None = None
+    password: str | None = None
+    camera_id: uuid.UUID | None = Field(
+        default=None,
+        description="Re-probe a saved camera: its stored password is used when none is given",
+    )
+
+
+class CameraProbeResult(BaseModel):
+    detected: bool
+    brand: CameraBrand = CameraBrand.generic
+    model: str | None = None
+    firmware: str | None = None
+    serial_number: str | None = None
+    rtsp_url: str | None = Field(default=None, description="Suggested main-stream path")
+    supports_device_face_engine: bool = False
+    detail: str | None = Field(default=None, description="Why detection failed, if it did")
+
+
 class CameraStreamConfig(CameraOut):
     """Same as CameraOut but carries the decrypted password — service auth only."""
 
@@ -169,6 +221,9 @@ class OccupancyOut(BaseModel):
     guests: int
     staff: int
     visitors: int
+    males: int = 0
+    females: int = 0
+    unknown_gender: int = 0
     as_of: datetime
 
 
@@ -209,6 +264,7 @@ class FaceSearchMatch(BaseModel):
     person_id: uuid.UUID
     display_name: str | None
     role: PersonRole
+    gender: PersonGender = PersonGender.unknown
     room_number: str | None
     reference_image: str | None
     similarity: float

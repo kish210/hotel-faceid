@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Event, Person, PersonRole, User, UserRole
+from ..models import Event, Person, PersonGender, PersonRole, User, UserRole
 from ..schemas import (
     EventOut,
     GuestRow,
@@ -60,6 +60,7 @@ def list_present(
                 person_id=person.id,
                 display_name=person.display_name,
                 role=person.role,
+                gender=person.gender,
                 room_number=person.room_number,
                 reference_image=person.reference_image,
                 first_entry=stay.checkin_at if stay else person.first_seen_at,
@@ -106,6 +107,11 @@ def update_person(
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(person, field, value)
+
+    # A gender set by hand must survive every later detection; picking
+    # 'unknown' is how an operator hands the decision back to the detector.
+    if "gender" in changes:
+        person.gender_manual = person.gender != PersonGender.unknown
 
     db.commit()
     db.refresh(person)

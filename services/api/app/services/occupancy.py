@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
-from ..models import Camera, Event, EventDirection, Person, PersonRole, Stay
+from ..models import Camera, Event, EventDirection, Person, PersonGender, PersonRole, Stay
 from ..schemas import DailyReportRow, DashboardOut, HourBucket, OccupancyOut, TopGuestRow
 from .stays import TZ
 
@@ -27,29 +27,39 @@ def _latest_direction_per_person(db: Session, as_of: datetime | None = None) -> 
 
 
 def people_inside(db: Session, as_of: datetime | None = None) -> list[tuple]:
+    """Rows of (person_id, role, gender) for everyone currently inside."""
     latest = _latest_direction_per_person(db, as_of)
     if not latest:
         return []
     rows = db.execute(
-        select(Person.id, Person.role).where(
+        select(Person.id, Person.role, Person.gender).where(
             Person.id.in_(list(latest.keys())),
             Person.deleted_at.is_(None),
         )
     ).all()
-    return [(pid, role) for pid, role in rows if latest[pid] is EventDirection.in_]
+    return [
+        (pid, role, gender)
+        for pid, role, gender in rows
+        if latest[pid] is EventDirection.in_
+    ]
 
 
 def current_occupancy(db: Session, as_of: datetime | None = None) -> OccupancyOut:
     rows = people_inside(db, as_of)
     counts = {role: 0 for role in PersonRole}
-    for _, role in rows:
+    genders = {gender: 0 for gender in PersonGender}
+    for _, role, gender in rows:
         counts[role] += 1
+        genders[gender or PersonGender.unknown] += 1
 
     return OccupancyOut(
         total=len(rows),
         guests=counts[PersonRole.guest] + counts[PersonRole.unknown],
         staff=counts[PersonRole.staff],
         visitors=counts[PersonRole.visitor],
+        males=genders[PersonGender.male],
+        females=genders[PersonGender.female],
+        unknown_gender=genders[PersonGender.unknown],
         as_of=as_of or datetime.now(TZ),
     )
 

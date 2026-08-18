@@ -68,6 +68,7 @@ def search_guests(
                 person_id=person.id,
                 display_name=person.display_name,
                 role=person.role,
+                gender=person.gender,
                 room_number=person.room_number,
                 reference_image=person.reference_image,
                 similarity=round(similarity, 4),

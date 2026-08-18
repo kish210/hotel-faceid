@@ -4,12 +4,17 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ---------------------------------------------------------------- persons
-CREATE TYPE person_role AS ENUM ('guest', 'staff', 'visitor', 'unknown');
+CREATE TYPE person_role   AS ENUM ('guest', 'staff', 'visitor', 'unknown');
+CREATE TYPE person_gender AS ENUM ('male', 'female', 'unknown');
 
 CREATE TABLE persons (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     display_name    TEXT,
     role            person_role  NOT NULL DEFAULT 'unknown',
+    gender          person_gender NOT NULL DEFAULT 'unknown',
+    gender_votes    JSONB,                      -- {"male": 12, "female": 3}
+    gender_manual   BOOLEAN      NOT NULL DEFAULT FALSE,  -- operator override
+    age_estimate    INTEGER,                    -- mean of the estimates seen
     room_number     TEXT,
     phone           TEXT,
     reference_image TEXT,                       -- relative path of the face crop
@@ -40,13 +45,16 @@ CREATE TABLE face_embeddings (
 CREATE INDEX idx_face_embeddings_person ON face_embeddings(person_id);
 
 -- ---------------------------------------------------------------- cameras
-CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'onvif', 'generic');
+CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'axis', 'onvif', 'generic');
 CREATE TYPE camera_purpose AS ENUM ('entry', 'exit', 'bidirectional', 'monitor');
 
 CREATE TABLE cameras (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name           TEXT NOT NULL,
     brand          camera_brand   NOT NULL DEFAULT 'onvif',
+    model          TEXT,                          -- filled by the auto-detect probe
+    firmware       TEXT,
+    serial_number  TEXT,
     purpose        camera_purpose NOT NULL DEFAULT 'bidirectional',
     location       TEXT,
     host           TEXT NOT NULL,

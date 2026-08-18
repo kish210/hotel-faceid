@@ -25,21 +25,34 @@ class DetectedFace:
     det_score: float
     quality: float
     crop: np.ndarray
+    gender: str | None = None  # 'male' | 'female' | None when the model is off
+    age: int | None = None
 
 
 class FaceEngine:
     def __init__(self) -> None:
         from insightface.app import FaceAnalysis
 
+        # genderage is a second, small model in the same pack; skipping it when
+        # the feature is off keeps the per-frame cost where it was.
+        modules = ["detection", "recognition"]
+        if settings.gender_detection:
+            modules.append("genderage")
+
         self.app = FaceAnalysis(
             name=settings.model_pack,
             providers=[settings.onnx_provider],
-            allowed_modules=["detection", "recognition"],
+            allowed_modules=modules,
         )
         # ctx_id -1 selects CPU; any >= 0 selects that GPU device.
         ctx_id = 0 if "CUDA" in settings.onnx_provider else -1
         self.app.prepare(ctx_id=ctx_id, det_size=(settings.det_size, settings.det_size))
-        log.info("Face engine ready (%s, %s)", settings.model_pack, settings.onnx_provider)
+        log.info(
+            "Face engine ready (%s, %s, gender=%s)",
+            settings.model_pack,
+            settings.onnx_provider,
+            "on" if settings.gender_detection else "off",
+        )
 
     def detect(self, frame: np.ndarray) -> list[DetectedFace]:
         results: list[DetectedFace] = []
@@ -67,10 +80,29 @@ class FaceEngine:
                     det_score=float(face.det_score),
                     quality=quality,
                     crop=crop,
+                    gender=_gender_of(face, quality),
+                    age=_age_of(face),
                 )
             )
 
         return results
+
+
+def _gender_of(face, quality: float) -> str | None:
+    """Map InsightFace's binary gender output onto our labels.
+
+    A blurry or badly lit crop is exactly where the estimate flips, so poor
+    crops report nothing rather than a guess the API would then have to vote on.
+    """
+    gender = getattr(face, "gender", None)
+    if gender is None or quality < settings.gender_min_quality:
+        return None
+    return "male" if int(gender) == 1 else "female"
+
+
+def _age_of(face) -> int | None:
+    age = getattr(face, "age", None)
+    return int(age) if age is not None else None
 
 
 def _safe_crop(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int, margin: float = 0.2) -> np.ndarray:

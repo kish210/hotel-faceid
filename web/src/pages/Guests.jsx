@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, Users } from "lucide-react";
 import { api } from "../api.js";
-import { ROLE_LABELS, formatDateTime, mediaUrl } from "../format.js";
+import { GENDER_LABELS, ROLE_LABELS, formatDateTime, mediaUrl } from "../format.js";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,7 @@ export default function Guests() {
                   <TableHead>تصویر</TableHead>
                   <TableHead>شناسه / نام</TableHead>
                   <TableHead>نقش</TableHead>
+                  <TableHead>جنسیت</TableHead>
                   <TableHead>اتاق</TableHead>
                   <TableHead>{mode === "present" ? "زمان ورود" : "آخرین مشاهده"}</TableHead>
                   <TableHead>شب اقامت</TableHead>
@@ -121,6 +122,7 @@ export default function Guests() {
                         </Link>
                       </TableCell>
                       <TableCell>{ROLE_LABELS[row.role] || row.role}</TableCell>
+                      <TableCell>{GENDER_LABELS[row.gender] || GENDER_LABELS.unknown}</TableCell>
                       <TableCell>{row.room_number || "—"}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatDateTime(row.first_entry || row.last_seen_at)}

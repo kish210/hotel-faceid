@@ -23,6 +23,8 @@ class EmbedResult(BaseModel):
     embedding: list[float]
     quality: float
     det_score: float
+    gender: str | None = None
+    age: int | None = None
 
 
 def build_embed_app(engine: FaceEngine) -> FastAPI:
@@ -51,6 +53,8 @@ def build_embed_app(engine: FaceEngine) -> FastAPI:
             embedding=face.embedding,
             quality=face.quality,
             det_score=face.det_score,
+            gender=face.gender,
+            age=face.age,
         )
 
     return app

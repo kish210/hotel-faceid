@@ -25,6 +25,20 @@ export const ROLE_LABELS = {
   unknown: "نامشخص",
 };
 
+export const GENDER_LABELS = {
+  male: "مرد",
+  female: "زن",
+  unknown: "نامشخص",
+};
+
+export const BRAND_LABELS = {
+  hikvision: "Hikvision",
+  dahua: "Dahua",
+  axis: "Axis",
+  onvif: "ONVIF (عمومی)",
+  generic: "سایر",
+};
+
 export const PURPOSE_LABELS = {
   entry: "ورودی",
   exit: "خروجی",

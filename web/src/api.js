@@ -66,6 +66,7 @@ export const api = {
   updateCamera: (id, body) =>
     request(`/api/cameras/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCamera: (id) => request(`/api/cameras/${id}`, { method: "DELETE" }),
+  probeCamera: (body) => request("/api/cameras/probe", { method: "POST", body: JSON.stringify(body) }),
 
   dailyReport: (start, end) =>
     request(`/api/reports/daily?${new URLSearchParams({ ...(start && { start }), ...(end && { end }) })}`),

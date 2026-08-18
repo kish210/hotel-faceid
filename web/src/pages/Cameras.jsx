@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Video, VideoOff, Camera } from "lucide-react";
+import { Plus, Trash2, Video, VideoOff, Camera, Pencil, ScanSearch, Loader2 } from "lucide-react";
 import { api, connectLiveUpdates } from "../api.js";
-import { PURPOSE_LABELS, formatDateTime } from "../format.js";
+import { BRAND_LABELS, PURPOSE_LABELS, formatDateTime } from "../format.js";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 const EMPTY = {
   name: "",
-  brand: "hikvision",
+  brand: "onvif",
+  model: "",
+  firmware: "",
+  serial_number: "",
   purpose: "entry",
   location: "",
   host: "",
@@ -41,17 +43,25 @@ const EMPTY = {
   enabled: true,
 };
 
-const BRANDS = {
-  hikvision: "Hikvision",
-  dahua: "Dahua",
-  onvif: "ONVIF (عمومی)",
-};
+/** Strips the fields the API does not accept on write. */
+function toForm(camera) {
+  return {
+    ...EMPTY,
+    ...Object.fromEntries(
+      Object.keys(EMPTY).map((key) => [key, camera[key] ?? EMPTY[key]])
+    ),
+    password: "", // never round-trips: left blank means "keep the stored one"
+  };
+}
 
 export default function Cameras() {
   const [cameras, setCameras] = useState([]);
   const [form, setForm] = useState(EMPTY);
+  const [editing, setEditing] = useState(null); // camera id, or null when adding
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(null);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState(null);
 
   async function load() {
     try {
@@ -85,15 +95,74 @@ export default function Cameras() {
     };
   }, []);
 
-  async function create(event) {
+  function openCreate() {
+    setForm(EMPTY);
+    setEditing(null);
+    setProbeResult(null);
+    setError(null);
+    setOpen(true);
+  }
+
+  function openEdit(camera) {
+    setForm(toForm(camera));
+    setEditing(camera.id);
+    setProbeResult(null);
+    setError(null);
+    setOpen(true);
+  }
+
+  async function submit(event) {
     event.preventDefault();
+    setError(null);
     try {
-      await api.createCamera({ ...form, port: Number(form.port) });
-      setForm(EMPTY);
+      const body = { ...form, port: Number(form.port) };
+      if (editing) {
+        // An empty password field must not wipe the stored credential.
+        if (!body.password) delete body.password;
+        await api.updateCamera(editing, body);
+      } else {
+        await api.createCamera(body);
+      }
       setOpen(false);
+      setForm(EMPTY);
+      setEditing(null);
       load();
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function detect() {
+    if (!form.host) {
+      setError("ابتدا آدرس IP دوربین را وارد کنید");
+      return;
+    }
+    setProbing(true);
+    setProbeResult(null);
+    setError(null);
+    try {
+      const result = await api.probeCamera({
+        host: form.host,
+        port: Number(form.port) || 80,
+        username: form.username || null,
+        password: form.password || null,
+        camera_id: editing,
+      });
+      setProbeResult(result);
+      if (result.detected) {
+        setForm((prev) => ({
+          ...prev,
+          brand: result.brand,
+          model: result.model || prev.model,
+          firmware: result.firmware || prev.firmware,
+          serial_number: result.serial_number || prev.serial_number,
+          name: prev.name || result.model || prev.name,
+        }));
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -109,7 +178,7 @@ export default function Cameras() {
         <Label>{label}</Label>
         <Input
           type={type}
-          value={form[key]}
+          value={form[key] ?? ""}
           onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         />
       </div>
@@ -118,71 +187,110 @@ export default function Cameras() {
 
   return (
     <>
-      <PageHeader title="مدیریت دوربین‌ها" description="افزودن و پایش دوربین‌های تحت شبکه">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="size-4" />
-              افزودن دوربین
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>افزودن دوربین جدید</DialogTitle>
-              <DialogDescription>مشخصات اتصال دوربین تحت شبکه را وارد کنید.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={create} className="grid gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {field("name", "نام دوربین")}
-                <div className="grid gap-1.5">
-                  <Label>برند</Label>
-                  <select
-                    value={form.brand}
-                    onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                    className="bg-input border-input h-9 rounded-md border px-3 text-sm"
-                  >
-                    {Object.entries(BRANDS).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>نقش دوربین</Label>
-                  <select
-                    value={form.purpose}
-                    onChange={(e) => setForm({ ...form, purpose: e.target.value })}
-                    className="bg-input border-input h-9 rounded-md border px-3 text-sm"
-                  >
-                    {Object.entries(PURPOSE_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                {field("location", "محل نصب")}
-                {field("host", "آدرس IP")}
-                {field("port", "پورت", "number")}
-                {field("username", "نام کاربری دوربین")}
-                {field("password", "رمز عبور دوربین", "password")}
-                {field("rtsp_url", "آدرس RTSP (اختیاری)")}
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="device-engine"
-                  checked={form.use_device_face_engine}
-                  onCheckedChange={(checked) => setForm({ ...form, use_device_face_engine: checked })}
-                />
-                <Label htmlFor="device-engine">استفاده از موتور تشخیص چهره داخلی دوربین</Label>
-              </div>
-              {error && <div className="text-destructive text-sm">{error}</div>}
-              <DialogFooter>
-                <Button type="submit">ثبت دوربین</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+      <PageHeader title="مدیریت دوربین‌ها" description="افزودن، ویرایش و پایش دوربین‌های تحت شبکه">
+        <Button onClick={openCreate}>
+          <Plus className="size-4" />
+          افزودن دوربین
+        </Button>
       </PageHeader>
 
-      {error && <div className="text-destructive mb-4">{error}</div>}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editing ? "ویرایش دوربین" : "افزودن دوربین جدید"}</DialogTitle>
+            <DialogDescription>
+              مشخصات اتصال دوربین را وارد کنید یا با «تشخیص خودکار» از خود دستگاه بخوانید.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submit} className="grid gap-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {field("name", "نام دوربین")}
+              <div className="grid gap-1.5">
+                <Label>برند</Label>
+                <select
+                  value={form.brand}
+                  onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                  className="bg-input border-input h-9 rounded-md border px-3 text-sm"
+                >
+                  {Object.entries(BRAND_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>نقش دوربین</Label>
+                <select
+                  value={form.purpose}
+                  onChange={(e) => setForm({ ...form, purpose: e.target.value })}
+                  className="bg-input border-input h-9 rounded-md border px-3 text-sm"
+                >
+                  {Object.entries(PURPOSE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              {field("location", "محل نصب")}
+              {field("host", "آدرس IP")}
+              {field("port", "پورت", "number")}
+              {field("username", "نام کاربری دوربین")}
+              {field(
+                "password",
+                editing ? "رمز عبور (خالی = بدون تغییر)" : "رمز عبور دوربین",
+                "password"
+              )}
+              {field("model", "مدل دستگاه")}
+              {field("rtsp_url", "آدرس RTSP (اختیاری)")}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" onClick={detect} disabled={probing}>
+                {probing ? <Loader2 className="size-4 animate-spin" /> : <ScanSearch className="size-4" />}
+                {probing ? "در حال شناسایی…" : "تشخیص خودکار مدل دوربین"}
+              </Button>
+              {probeResult?.detected && (
+                <span className="text-muted-foreground text-sm">
+                  {BRAND_LABELS[probeResult.brand] || probeResult.brand}
+                  {probeResult.model ? ` — ${probeResult.model}` : ""}
+                  {probeResult.firmware ? ` (نسخه ${probeResult.firmware})` : ""}
+                </span>
+              )}
+              {probeResult && !probeResult.detected && (
+                <span className="text-destructive text-sm">{probeResult.detail}</span>
+              )}
+            </div>
+
+            {probeResult?.detected && probeResult.supports_device_face_engine && (
+              <div className="text-muted-foreground text-xs">
+                این مدل موتور تشخیص چهره داخلی دارد — می‌توانید گزینهٔ زیر را روشن کنید.
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="device-engine"
+                checked={form.use_device_face_engine}
+                onCheckedChange={(checked) => setForm({ ...form, use_device_face_engine: checked })}
+              />
+              <Label htmlFor="device-engine">استفاده از موتور تشخیص چهره داخلی دوربین</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="camera-enabled"
+                checked={form.enabled}
+                onCheckedChange={(checked) => setForm({ ...form, enabled: checked })}
+              />
+              <Label htmlFor="camera-enabled">دوربین فعال باشد</Label>
+            </div>
+
+            {error && <div className="text-destructive text-sm">{error}</div>}
+            <DialogFooter>
+              <Button type="submit">{editing ? "ذخیره تغییرات" : "ثبت دوربین"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {error && !open && <div className="text-destructive mb-4">{error}</div>}
 
       <Card className="overflow-hidden">
         <CardContent className="p-0">
@@ -190,13 +298,13 @@ export default function Cameras() {
             <TableHeader>
               <TableRow>
                 <TableHead>نام</TableHead>
-                <TableHead>برند</TableHead>
+                <TableHead>برند / مدل</TableHead>
                 <TableHead>نقش</TableHead>
                 <TableHead>محل</TableHead>
                 <TableHead>آدرس</TableHead>
                 <TableHead>وضعیت</TableHead>
                 <TableHead>آخرین ارتباط</TableHead>
-                <TableHead className="w-20" />
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -208,7 +316,12 @@ export default function Cameras() {
                       {camera.name}
                     </span>
                   </TableCell>
-                  <TableCell>{camera.brand}</TableCell>
+                  <TableCell>
+                    <div>{BRAND_LABELS[camera.brand] || camera.brand}</div>
+                    {camera.model && (
+                      <div className="text-muted-foreground text-xs" dir="ltr">{camera.model}</div>
+                    )}
+                  </TableCell>
                   <TableCell>{PURPOSE_LABELS[camera.purpose] || camera.purpose}</TableCell>
                   <TableCell>{camera.location || "—"}</TableCell>
                   <TableCell className="font-mono text-xs" dir="ltr">{camera.host}:{camera.port}</TableCell>
@@ -219,9 +332,14 @@ export default function Cameras() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDateTime(camera.last_seen_at)}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => remove(camera.id)} className="text-destructive">
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(camera)}>
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => remove(camera.id)} className="text-destructive">
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

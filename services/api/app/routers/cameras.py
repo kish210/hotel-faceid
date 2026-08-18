@@ -6,9 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Camera, User, UserRole
-from ..schemas import CameraCreate, CameraOut, CameraStreamConfig, CameraUpdate
+from ..models import Camera, CameraBrand, User, UserRole
+from ..schemas import (
+    CameraCreate,
+    CameraOut,
+    CameraProbeRequest,
+    CameraProbeResult,
+    CameraStreamConfig,
+    CameraUpdate,
+)
 from ..security import decrypt_secret, encrypt_secret, get_current_user, require_roles, require_service_key
+from ..services import camera_probe
 from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
@@ -28,13 +36,46 @@ def create_camera(
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(UserRole.admin)),
 ) -> Camera:
-    data = payload.model_dump(exclude={"password"})
+    data = payload.model_dump(exclude={"password", "autodetect"})
+
+    if payload.autodetect:
+        # Identify the device now so brand/model are right from the first save;
+        # an unreachable camera is not a reason to refuse the record.
+        probed = camera_probe.probe(payload.host, payload.port, payload.username, payload.password)
+        if probed.detected:
+            # An explicitly chosen brand wins; the generic ones mean "you tell me".
+            if payload.brand in (CameraBrand.onvif, CameraBrand.generic):
+                data["brand"] = probed.brand
+            data["model"] = data["model"] or probed.model
+            data["firmware"] = data["firmware"] or probed.firmware
+            data["serial_number"] = data["serial_number"] or probed.serial_number
+
     camera = Camera(**data, password_enc=encrypt_secret(payload.password))
     db.add(camera)
     db.commit()
     db.refresh(camera)
     log_action(db, actor, "camera.create", entity="camera", entity_id=str(camera.id), detail={"name": camera.name})
     return camera
+
+
+@router.post("/probe", response_model=CameraProbeResult)
+def probe_camera(
+    payload: CameraProbeRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.admin)),
+) -> CameraProbeResult:
+    """Ask a device what it is: brand, model, firmware and serial.
+
+    Used by the "detect automatically" button before a camera is saved, and to
+    refresh the details of one that already exists.
+    """
+    password = payload.password
+    if password is None and payload.camera_id is not None:
+        saved = db.get(Camera, payload.camera_id)
+        if saved is not None:
+            password = decrypt_secret(saved.password_enc)
+
+    return camera_probe.probe(payload.host, payload.port, payload.username, password)
 
 
 @router.patch("/{camera_id}", response_model=CameraOut)

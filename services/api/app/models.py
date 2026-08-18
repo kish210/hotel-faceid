@@ -31,8 +31,15 @@ class PersonRole(str, enum.Enum):
 class CameraBrand(str, enum.Enum):
     dahua = "dahua"
     hikvision = "hikvision"
+    axis = "axis"
     onvif = "onvif"
     generic = "generic"
+
+
+class PersonGender(str, enum.Enum):
+    male = "male"
+    female = "female"
+    unknown = "unknown"
 
 
 class CameraPurpose(str, enum.Enum):
@@ -69,6 +76,15 @@ class Person(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     display_name: Mapped[str | None] = mapped_column(Text)
     role: Mapped[PersonRole] = mapped_column(_enum(PersonRole, "person_role"), default=PersonRole.unknown)
+    gender: Mapped[PersonGender] = mapped_column(
+        _enum(PersonGender, "person_gender"), default=PersonGender.unknown
+    )
+    # Per-class tally, e.g. {"male": 12, "female": 3}: the winning class becomes
+    # `gender`. Keeping the tally is what makes a single bad frame harmless.
+    gender_votes: Mapped[dict | None] = mapped_column(JSON)
+    # Set once an operator picks a gender by hand — detections stop overriding it.
+    gender_manual: Mapped[bool] = mapped_column(Boolean, default=False)
+    age_estimate: Mapped[int | None] = mapped_column(Integer)
     room_number: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(Text)
     reference_image: Mapped[str | None] = mapped_column(Text)
@@ -106,6 +122,10 @@ class Camera(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(Text)
     brand: Mapped[CameraBrand] = mapped_column(_enum(CameraBrand, "camera_brand"), default=CameraBrand.onvif)
+    # Filled in by the auto-detect probe (or by hand): "DS-2CD2143G0-I", "P3245-LVE"…
+    model: Mapped[str | None] = mapped_column(Text)
+    firmware: Mapped[str | None] = mapped_column(Text)
+    serial_number: Mapped[str | None] = mapped_column(Text)
     purpose: Mapped[CameraPurpose] = mapped_column(
         _enum(CameraPurpose, "camera_purpose"), default=CameraPurpose.bidirectional
     )

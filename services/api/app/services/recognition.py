@@ -17,6 +17,7 @@ from ..models import (
     EventDirection,
     FaceEmbedding,
     Person,
+    PersonGender,
     PersonRole,
 )
 from ..schemas import RecognizeRequest, RecognizeResponse
@@ -31,6 +32,11 @@ log = logging.getLogger(__name__)
 ENROLL_LOWER = 0.50
 ENROLL_UPPER = 0.85
 MAX_EMBEDDINGS_PER_PERSON = 15
+
+# A profile view or a hat flips the estimate now and then, so gender is decided
+# by majority over every sighting instead of by the newest frame. Below this
+# many votes the label stays 'unknown' rather than showing a coin flip.
+MIN_GENDER_VOTES = 3
 
 
 def resolve_direction(db: Session, person_id: uuid.UUID, camera: Camera | None,
@@ -72,6 +78,37 @@ def is_debounced(db: Session, person_id: uuid.UUID, at: datetime) -> bool:
     return recent is not None
 
 
+def update_gender(person: Person, gender: PersonGender | None, age: int | None) -> None:
+    """Fold one estimate into the person's running tally.
+
+    An operator's manual choice is final: automatic estimates keep accumulating
+    in the tally (so the correction can be reviewed later) but never change the
+    label that gets displayed.
+    """
+    if age is not None:
+        # Running mean over the same sightings the votes were counted from.
+        seen = sum((person.gender_votes or {}).values())
+        person.age_estimate = (
+            age if not seen or person.age_estimate is None
+            else round((person.age_estimate * seen + age) / (seen + 1))
+        )
+
+    if gender is None or gender is PersonGender.unknown:
+        return
+
+    votes = dict(person.gender_votes or {})
+    votes[gender.value] = votes.get(gender.value, 0) + 1
+    # Reassigning (rather than mutating) is what marks the JSON column dirty.
+    person.gender_votes = votes
+
+    if person.gender_manual:
+        return
+
+    winner, count = max(votes.items(), key=lambda item: item[1])
+    if count >= MIN_GENDER_VOTES:
+        person.gender = PersonGender(winner)
+
+
 def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeResponse:
     at = payload.detected_at or datetime.now().astimezone()
     camera = db.get(Camera, payload.camera_id) if payload.camera_id else None
@@ -91,6 +128,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
             last_seen_at=at,
         )
         db.add(person)
+        update_gender(person, payload.gender, payload.age)
         db.flush()
         db.add(
             FaceEmbedding(
@@ -102,6 +140,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
         )
     else:
         person.last_seen_at = at
+        update_gender(person, payload.gender, payload.age)
         _maybe_enroll(db, person, payload, similarity, image_path)
 
     if is_debounced(db, person.id, at):
@@ -113,6 +152,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
             event_id=None,
             direction=None,
             debounced=True,
+            gender=person.gender,
         )
 
     direction = resolve_direction(db, person.id, camera, payload.direction_hint)
@@ -141,6 +181,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
         event_id=event.id,
         direction=direction,
         debounced=False,
+        gender=person.gender,
     )
 
 
@@ -185,6 +226,7 @@ def merge_persons(db: Session, source_id: uuid.UUID, target_id: uuid.UUID) -> Pe
     target.display_name = target.display_name or source.display_name
     target.room_number = target.room_number or source.room_number
     target.phone = target.phone or source.phone
+    _merge_gender(source, target)
 
     source.merged_into = target_id
     source.deleted_at = datetime.now().astimezone()
@@ -192,6 +234,29 @@ def merge_persons(db: Session, source_id: uuid.UUID, target_id: uuid.UUID) -> Pe
     db.commit()
     db.refresh(target)
     return target
+
+
+def _merge_gender(source: Person, target: Person) -> None:
+    """Pool both identities' tallies — they were one person all along."""
+    votes = dict(target.gender_votes or {})
+    for label, count in (source.gender_votes or {}).items():
+        votes[label] = votes.get(label, 0) + count
+    target.gender_votes = votes or None
+
+    if target.age_estimate is None:
+        target.age_estimate = source.age_estimate
+
+    if target.gender_manual or not votes:
+        return
+    if source.gender_manual:
+        # A human already judged the duplicate; that answer outranks the tally.
+        target.gender = source.gender
+        target.gender_manual = True
+        return
+
+    winner, count = max(votes.items(), key=lambda item: item[1])
+    if count >= MIN_GENDER_VOTES:
+        target.gender = PersonGender(winner)
 
 
 def _merge_stays(db: Session, source_id: uuid.UUID, target_id: uuid.UUID) -> None:
@@ -241,6 +306,11 @@ def forget_person(db: Session, person_id: uuid.UUID) -> None:
     person.reference_image = None
     person.display_name = None
     person.phone = None
+    # Gender and age were inferred from the face — they go with the biometrics.
+    person.gender = PersonGender.unknown
+    person.gender_votes = None
+    person.gender_manual = False
+    person.age_estimate = None
     person.deleted_at = datetime.now().astimezone()
     db.commit()
 

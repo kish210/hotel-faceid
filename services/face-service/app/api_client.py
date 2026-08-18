@@ -34,6 +34,8 @@ class ApiClient:
         quality: float | None,
         direction_hint: str | None,
         detected_at: datetime | None = None,
+        gender: str | None = None,
+        age: int | None = None,
     ) -> dict | None:
         payload = {
             "camera_id": camera_id,
@@ -41,6 +43,8 @@ class ApiClient:
             "confidence": confidence,
             "quality": quality,
             "direction_hint": direction_hint,
+            "gender": gender,
+            "age": age,
             "detected_at": (detected_at or datetime.now(timezone.utc)).isoformat(),
         }
         if image:

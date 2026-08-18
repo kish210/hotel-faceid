@@ -1,5 +1,7 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.cameras.axis import AxisCamera
 from app.cameras.base import CameraConfig
 from app.cameras.dahua import DahuaCamera
 from app.cameras.hikvision import HikvisionCamera
@@ -101,6 +103,62 @@ def test_dahua_snapshot_used_as_image():
     assert event is not None and event.image == jpeg
 
 
+# ------------------------------------------------------------------- Axis
+def axis_message(topic, items=None):
+    """Build the zeep-shaped object an ONVIF PullPoint hands back."""
+    simple = [SimpleNamespace(Name=name, Value=value) for name, value in (items or {}).items()]
+    return SimpleNamespace(
+        Topic=SimpleNamespace(_value_1=topic),
+        Message=SimpleNamespace(
+            _value_1=SimpleNamespace(
+                Source=SimpleNamespace(SimpleItem=[]),
+                Key=None,
+                Data=SimpleNamespace(SimpleItem=simple),
+            )
+        ),
+    )
+
+
+def test_axis_rtsp_url():
+    cam = make(AxisCamera)
+    assert cam.rtsp_url().startswith("rtsp://192.168.1.100:554/axis-media/media.amp")
+
+
+def test_axis_object_analytics_event():
+    cam = make(AxisCamera)
+    message = axis_message(
+        "tns1:RuleEngine/ObjectDetect/Object", {"active": "1", "direction": "leftToRight"}
+    )
+    with patch.object(cam, "snapshot", return_value=None):
+        event = cam._parse_message(message)
+    assert event is not None, "object-detect topic should parse"
+    assert event.direction == "in", event.direction
+
+
+def test_axis_inactive_state_ignored():
+    cam = make(AxisCamera)
+    message = axis_message("tns1:RuleEngine/LineDetector/Crossed", {"active": "false"})
+    with patch.object(cam, "snapshot", return_value=None):
+        assert cam._parse_message(message) is None
+
+
+def test_axis_unrelated_topic_ignored():
+    cam = make(AxisCamera)
+    message = axis_message("tns1:Device/HardwareFailure/StorageFailure", {"active": "1"})
+    with patch.object(cam, "snapshot", return_value=None):
+        assert cam._parse_message(message) is None
+
+
+def test_axis_purpose_overrides_payload_direction():
+    cam = make(AxisCamera, purpose="exit")
+    message = axis_message("tns1:RuleEngine/ObjectDetect/Object", {"direction": "leftToRight"})
+    jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\xff\xd9"
+    with patch.object(cam, "snapshot", return_value=jpeg):
+        event = cam._parse_message(message)
+    assert event is not None and event.direction == "out"
+    assert event.image == jpeg
+
+
 if __name__ == "__main__":
     test_hikvision_face()
     test_hikvision_motion_ignored()
@@ -111,4 +169,9 @@ if __name__ == "__main__":
     test_dahua_motion_ignored()
     test_dahua_exit_direction()
     test_dahua_snapshot_used_as_image()
+    test_axis_rtsp_url()
+    test_axis_object_analytics_event()
+    test_axis_inactive_state_ignored()
+    test_axis_unrelated_topic_ignored()
+    test_axis_purpose_overrides_payload_direction()
     print("ALL TESTS PASSED")
