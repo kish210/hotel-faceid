@@ -37,7 +37,6 @@ Name: "startup"; Description: "افزودن راه‌اندازی به منوی 
 
 [Files]
 ; ---- source of every service (kept on disk for debugging) ----
-Source: "{#Root}\docker-compose.yml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\.env.example"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\todo.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -45,7 +44,6 @@ Source: "{#Root}\db\init\*"; DestDir: "{app}\db\init"; Flags: ignoreversion recu
 Source: "{#Root}\setup\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 ; ---- api ----
-Source: "{#Root}\services\api\Dockerfile"; DestDir: "{app}\services\api"; Flags: ignoreversion
 Source: "{#Root}\services\api\requirements.txt"; DestDir: "{app}\services\api"; Flags: ignoreversion
 Source: "{#Root}\services\api\app\*.py"; DestDir: "{app}\services\api\app"; Flags: ignoreversion
 Source: "{#Root}\services\api\app\routers\*.py"; DestDir: "{app}\services\api\app\routers"; Flags: ignoreversion
@@ -53,21 +51,22 @@ Source: "{#Root}\services\api\app\services\*.py"; DestDir: "{app}\services\api\a
 Source: "{#Root}\services\api\fonts\*"; DestDir: "{app}\services\api\fonts"; Flags: ignoreversion
 
 ; ---- face-service ----
-Source: "{#Root}\services\face-service\Dockerfile"; DestDir: "{app}\services\face-service"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\requirements.txt"; DestDir: "{app}\services\face-service"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\app\*.py"; DestDir: "{app}\services\face-service\app"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\app\cameras\*.py"; DestDir: "{app}\services\face-service\app\cameras"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\tests\*.py"; DestDir: "{app}\services\face-service\tests"; Flags: ignoreversion
 
-; ---- web (source only; containers build from source) ----
-Source: "{#Root}\web\Dockerfile"; DestDir: "{app}\web"; Flags: ignoreversion
+; ---- web: the built panel, served by the API itself ----
+; Shipping dist\ is what frees the target machine from needing Node.js.
+Source: "{#Root}\web\dist\*"; DestDir: "{app}\web\dist"; Flags: ignoreversion recursesubdirs
+
+; ---- web sources (kept on disk so the panel can be rebuilt/debugged) ----
 Source: "{#Root}\web\package.json"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\package-lock.json"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\vite.config.js"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\jsconfig.json"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\components.json"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\index.html"; DestDir: "{app}\web"; Flags: ignoreversion
-Source: "{#Root}\web\nginx.conf"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\public\fonts\*"; DestDir: "{app}\web\public\fonts"; Flags: ignoreversion
 Source: "{#Root}\web\src\*.jsx"; DestDir: "{app}\web\src"; Flags: ignoreversion
 Source: "{#Root}\web\src\api.js"; DestDir: "{app}\web\src"; Flags: ignoreversion
@@ -86,6 +85,8 @@ Source: "{#Root}\setup\app.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}\راه‌اندازی (Start)"; Filename: "{app}\scripts\run-install.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
+Name: "{autoprograms}\{#MyAppName}\شروع (Start)"; Filename: "{app}\scripts\run-start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
+Name: "{autoprograms}\{#MyAppName}\توقف (Stop)"; Filename: "{app}\scripts\run-stop.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\وضعیت (Status)"; Filename: "{app}\scripts\run-status.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\لاگ‌ها (Logs)"; Filename: "{app}\scripts\run-logs.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\مستندات"; Filename: "{app}\scripts\README-install.md"
@@ -95,15 +96,23 @@ Name: "{commondesktop}\{#MyAppName} راه‌اندازی"; Filename: "{app}\scr
 Filename: "{app}\scripts\run-install.cmd"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent; Description: "راه‌اندازی سامانه پس از نصب"
 
 [Code]
+function PythonInstalled(): Boolean;
+var
+  path: String;
+begin
+  // `py.exe` ships with every python.org installer; the PATH entry is the
+  // fallback for installs that skipped the launcher.
+  Result := FileExists(ExpandConstant('{sys}\py.exe')) or
+            RegQueryStringValue(HKCU32, 'Software\Python\PythonCore\3.11\InstallPath', '', path) or
+            RegQueryStringValue(HKLM32, 'Software\Python\PythonCore\3.11\InstallPath', '', path) or
+            RegQueryStringValue(HKLM64, 'Software\Python\PythonCore\3.11\InstallPath', '', path);
+end;
+
 function InitializeSetup(): Boolean;
 begin
-  if not RegKeyExists(HKCU32, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Docker Desktop_is1') and
-     not RegKeyExists(HKLM32, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Docker Desktop_is1') and
-     not RegKeyExists(HKLM64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Docker Desktop_is1') and
-     not FileExists(ExpandConstant('{commonpf}\Docker\Docker\Docker Desktop.exe')) then
-  begin
-    Result := MsgBox('Docker Desktop یافت نشد. این نرم‌افزار برای اجرای سامانه لازم است. نصب را ادامه می‌دهید؟', mbConfirmation, MB_YESNO) = IDYES;
-  end else
+  if not PythonInstalled() then
+    Result := MsgBox('Python 3.11 یافت نشد. برای اجرای سامانه لازم است (هنگام نصب گزینهٔ Add python.exe to PATH را تیک بزنید). نصب را ادامه می‌دهید؟', mbConfirmation, MB_YESNO) = IDYES
+  else
     Result := True;
 end;
 

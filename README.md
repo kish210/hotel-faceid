@@ -20,65 +20,87 @@ face-service ── تشخیص چهره (RetinaFace) و استخراج بردا�
       api ── تطبیق هویت، ثبت رویداد، محاسبه اقامت و اشغال
         │  REST + WebSocket
         ▼
-      web ── پنل مدیریتی React
+      web ── پنل مدیریتی React (توسط همان API سرو می‌شود)
         │
-   PostgreSQL + pgvector
+      SQLite  (یا PostgreSQL در نصب‌های بزرگ)
 ```
 
 | سرویس | فناوری | نقش |
 |---|---|---|
 | `services/face-service` | Python، InsightFace، OpenCV | اتصال به دوربین، تشخیص چهره، استخراج بردار |
-| `services/api` | FastAPI، SQLAlchemy | بازشناسی هویت، منطق ورود/خروج و اقامت، گزارش‌ها |
+| `services/api` | FastAPI، SQLAlchemy | بازشناسی هویت، منطق ورود/خروج و اقامت، گزارش‌ها، سرو پنل |
 | `web` | React، Vite، Recharts | داشبورد و پنل مدیریتی |
-| `db` | PostgreSQL 16 + pgvector | داده رابطه‌ای و جست‌وجوی برداری چهره |
+| `db` | SQLite (پیش‌فرض) یا PostgreSQL 16 | داده رابطه‌ای؛ بردارهای چهره در JSON و تطبیق با numpy |
+
+سامانه **بدون Docker** و با دو پروسهٔ پایتون اجرا می‌شود: `api` (که پنل
+build‌شده را هم سرو می‌کند) و `face-service`.
 
 ---
 
 ## راه‌اندازی
 
-```bash
-cp .env.example .env
+### روی ویندوز (نصب یک‌مرحله‌ای)
+
+```powershell
+.\setup\scripts\install.ps1
 ```
 
-سپس در `.env` این مقادیر را حتماً تغییر دهید:
+این اسکریپت Python را بررسی می‌کند، محیط مجازی می‌سازد، وابستگی‌ها را نصب
+می‌کند، در صورت نیاز پنل را build می‌کند، `.env` را با رمزهای تصادفی می‌سازد و
+هر دو سرویس را بالا می‌آورد. جزئیات در [setup/README.md](setup/README.md).
+
+مدیریت پس از نصب: `start.ps1` / `stop.ps1` / `status.ps1` / `logs.ps1`.
+
+### دستی (یا روی لینوکس)
+
+```bash
+cp .env.example .env
+python -m venv .venv && . .venv/bin/activate     # ویندوز: .venv\Scripts\activate
+pip install -r services/api/requirements.txt
+pip install -r services/face-service/requirements.txt
+
+cd web && npm install && npm run build && cd ..   # پنل را build می‌کند
+
+# ترمینال ۱ — API (پنل را هم سرو می‌کند)
+PYTHONPATH=services/api python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# ترمینال ۲ — سرویس تشخیص چهره
+PYTHONPATH=services/face-service python -m app.main
+```
+
+هر دو سرویس باید از **ریشهٔ پروژه** اجرا شوند تا `.env` و مسیرهای نسبی داخل آن
+(`./data/...`) درست خوانده شوند.
+
+پیش از اجرا در `.env` این مقادیر را حتماً تغییر دهید:
 
 | متغیر | نحوه تولید |
 |---|---|
-| `POSTGRES_PASSWORD` | رمز دلخواه |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `SERVICE_API_KEY` | `openssl rand -hex 24` |
+| `JWT_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `SERVICE_API_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `SECRET_ENCRYPTION_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 
 > بدون `SECRET_ENCRYPTION_KEY` رمز عبور دوربین‌ها **رمزنگاری‌نشده** ذخیره می‌شود.
 > این حالت فقط برای توسعه محلی قابل قبول است.
 
-اجرای کل سامانه:
-
-```bash
-docker compose up -d --build
-```
-
-- پنل مدیریت: <http://localhost:4000>
+- پنل مدیریت: <http://localhost:8000>
 - مستندات API: <http://localhost:8000/docs>
 - ورود اولیه: `admin` / `admin` — **بلافاصله پس از اولین ورود تغییر دهید**
 
-اگر پورت ۴۰۰۰ یا ۵۴۳۲ روی سرور اشغال است، `WEB_PORT` یا `POSTGRES_PORT` را در
-`.env` تغییر دهید.
+اگر پورت ۸۰۰۰ اشغال است، `API_PORT` را در `.env` تغییر دهید.
 
-### اجرای بدون Docker (توسعه)
+### توسعهٔ پنل
+
+در حالت توسعه، Vite پنل را روی پورت ۵۱۷۳ سرو می‌کند و درخواست‌های `/api` را به
+پورت ۸۰۰۰ پراکسی می‌کند:
 
 ```bash
-# بک‌اند
-cd services/api && pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# سرویس تشخیص چهره
-cd services/face-service && pip install -r requirements.txt
-python -m app.main
-
-# پنل
-cd web && npm install && npm run dev
+cd web && npm run dev
 ```
+
+### پایگاه داده
+
+پیش‌فرض SQLite است (`data/hotel_faceid.db`) و هیچ سرویس جداگانه‌ای لازم ندارد.
+برای نصب‌های بزرگ‌تر، `DATABASE_URL` را به یک PostgreSQL موجود بدهید و یک بار
+`db/init/001_schema.sql` را روی آن اجرا کنید.
 
 ---
 
@@ -201,9 +223,11 @@ WizSense یا Axis Object Analytics)، گزینه «استفاده از موتو
 - سرور پردازش را با GPU تهیه کنید و در `.env` مقدار
   `ONNX_PROVIDER=CUDAExecutionProvider` را تنظیم کرده و در
   `services/face-service/requirements.txt` بسته `onnxruntime` را با
-  `onnxruntime-gpu` جایگزین کنید. بخش `deploy.resources` مربوط به GPU در
-  `docker-compose.yml` نیز باید از حالت کامنت خارج شود.
-- دوربین‌ها را روی VLAN مجزا قرار دهید و از انتقال RTSP روی TCP استفاده کنید
-  (در Dockerfile سرویس تشخیص چهره پیش‌فرض تنظیم شده است).
+  `onnxruntime-gpu` جایگزین کنید (سپس وابستگی‌ها را دوباره نصب کنید).
+- دوربین‌ها را روی VLAN مجزا قرار دهید؛ انتقال RTSP روی TCP به‌صورت پیش‌فرض
+  در `services/face-service/app/__init__.py` تنظیم شده است.
 - سامانه را پشت TLS منتشر کنید؛ بردار چهره داده زیستی است.
-- بکاپ روزانه از `pgdata` و volume مربوط به `media` تهیه کنید.
+- بکاپ روزانه از کل پوشهٔ `data/` بگیرید (پایگاه داده و تصاویر چهره) — یا در
+  حالت PostgreSQL، از دیتابیس و `data/media`.
+- برای اجرای خودکار پس از ری‌استارت ویندوز، `scripts\run-start.cmd` را در
+  Task Scheduler با تریگر *At startup* ثبت کنید.

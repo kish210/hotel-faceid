@@ -11,7 +11,8 @@
 ## فاز ۰ — اسکلت پروژه (Scaffold) — `[x]` انجام شد
 
 - [x] ساختار مونوریپو (`services/api`، `services/face-service`، `web`، `db`)
-- [x] `docker-compose.yml` برای PostgreSQL + pgvector، API، face-service و پنل وب
+- [x] اجرای بدون Docker: دو پروسهٔ پایتون (API + face-service)، پایگاه دادهٔ
+      SQLite و سرو پنل build‌شده توسط خود API
 - [x] اسکیمای پایگاه داده (`db/init/001_schema.sql`) شامل جداول
       `persons`، `face_embeddings`، `events`، `stays`، `cameras`، `users`
 - [x] سرویس API با FastAPI: مدل‌ها، اسکیماها، لایه سرویس، روترها، WebSocket
@@ -23,7 +24,7 @@
 
 ### آزمون‌های انجام‌شده روی اسکلت
 
-سامانه با `docker compose` بالا آورده شد و این موارد به‌صورت واقعی تست و تأیید شد:
+سامانه به‌صورت واقعی بالا آورده شد و این موارد تست و تأیید شد:
 
 - [x] ورود به پنل با JWT و رد درخواست بدون توکن (۴۰۱)
 - [x] احراز هویت جداگانه سرویس تشخیص چهره با `X-Service-Key`
@@ -67,7 +68,7 @@
 - [ ] فعال‌سازی ONVIF و ساخت کاربر سرویس روی هر دوربین Dahua/Hikvision
 - [ ] تست دریافت استریم RTSP از تک‌تک دوربین‌ها و ثبت آدرس‌ها در جدول `cameras`
 - [ ] تهیه و راه‌اندازی سرور AI با GPU (NVIDIA + CUDA) و نصب درایورها
-- [ ] راه‌اندازی PostgreSQL با افزونه pgvector و اجرای اسکیمای اولیه
+- [ ] در صورت انتخاب PostgreSQL به‌جای SQLite، راه‌اندازی سرور و اجرای `db/init/001_schema.sql`
 - [ ] پیکربندی NVR / سیاست آرشیو ویدیوی خام
 - [ ] راه‌اندازی بکاپ خودکار روزانه پایگاه داده
 
@@ -163,9 +164,9 @@
 
 - [x] ساخت بسته نصب ویندوزی با **Inno Setup** (`setup/Hotel-FaceID.iss`)
 - [x] فایل نسخه (`setup/VERSION` = 0.9.0)
-- [x] اسکریپت نصب PowerShell (`setup/scripts/install.ps1`): بررسی Docker،
-      ساخت `.env` امن با رمز تصادفی، مدیریت پورت اشغال، build و بالا آوردن
-      کانتینرها
+- [x] اسکریپت نصب PowerShell (`setup/scripts/install.ps1`): بررسی Python،
+      ساخت محیط مجازی و نصب وابستگی‌ها، build پنل، ساخت `.env` امن با رمز
+      تصادفی و اجرای هر دو سرویس — بدون نیاز به Docker
 - [x] اسکریپت‌های کمکی: `start.ps1` / `stop.ps1` / `status.ps1` / `logs.ps1` /
       `debug.ps1` (جمع‌آوری لاگ برای عیب‌یابی)
 - [x] سورس کامل سامانه داخل بسته نصب کپی می‌شود تا امکان debug مستقیم باشد

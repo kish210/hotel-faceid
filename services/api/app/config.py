@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     service_api_key: str = "change-me-service-key"
 
     media_root: str = "./data/media"
+    # Built React panel. Empty means "the web/dist folder next to this repo",
+    # which is where `npm run build` puts it.
+    web_dist: str = ""
     face_image_retention_days: int = 30
 
     face_match_threshold: float = 0.42

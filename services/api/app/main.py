@@ -75,3 +75,21 @@ app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+def _web_dist() -> Path:
+    """Where the built panel lives: app/ → api/ → services/ → repo root."""
+    if settings.web_dist:
+        return Path(settings.web_dist)
+    return Path(__file__).resolve().parents[3] / "web" / "dist"
+
+
+# The panel is served by this same process — there is no separate web server.
+# Mounted last so it never shadows /api, /media or /health, and only when a
+# build exists (during development Vite serves it on port 5173 instead).
+_dist = _web_dist()
+if (_dist / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=_dist, html=True), name="web")
+    log.info("Serving the web panel from %s", _dist)
+else:
+    log.warning("No web build at %s — run `npm run build` in web/", _dist)

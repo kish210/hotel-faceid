@@ -11,3 +11,7 @@ dist/
 media/
 *.log
 .DS_Store
+
+# runtime state of a local install
+data/
+debug/

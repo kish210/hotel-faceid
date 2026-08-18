@@ -1,7 +1,10 @@
 <#
 .SYNOPSIS
-    Hotel Face-ID installer — checks Docker, writes a secure .env,
-    builds and starts the full stack, creates desktop shortcuts.
+    Hotel Face-ID installer — no Docker.
+
+    Creates a Python virtual environment, installs both services into it,
+    builds the web panel if it is not already built, writes a secure .env and
+    starts the system. Safe to run repeatedly.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -11,136 +14,117 @@ if (-not $versionLine) { $versionLine = "0.9.0" }
 $version = $versionLine
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Hotel Face-ID v$version — نصب سامانه" -ForegroundColor Cyan
+Write-Host "  Hotel Face-ID v$version — نصب سامانه (بدون Docker)" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ---------------------------------------------------------------- 1. Docker
-function Test-DockerDaemon {
-    try {
-        $info = docker info 2>$null | Out-String
-        return [bool]($info -match "Server Version|Operating System")
-    } catch {
-        return $false
+# ---------------------------------------------------------------- 1. Python
+function Get-PythonCommand {
+    # `py -3.11` is the launcher installed with python.org builds; plain
+    # `python` on PATH is the fallback. The Microsoft Store stub answers on
+    # PATH but fails to report a version, so asking it is what rules it out.
+    $candidates = @(
+        @{ Exe = "py";     Args = @("-3.11") },
+        @{ Exe = "py";     Args = @("-3")    },
+        @{ Exe = "python"; Args = @()        }
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not (Get-Command $candidate.Exe -ErrorAction SilentlyContinue)) { continue }
+        $probe = $candidate.Args + @("-c", "import sys; print('%d.%d' % sys.version_info[:2])")
+        $reported = & $candidate.Exe @probe 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $reported) { continue }
+
+        $parts = $reported.Trim().Split(".")
+        if ([int]$parts[0] -eq 3 -and [int]$parts[1] -ge 10) {
+            return @{ Exe = $candidate.Exe; Args = $candidate.Args; Version = $reported.Trim() }
+        }
     }
+    return $null
 }
 
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host "[1/4] Docker یافت نشد." -ForegroundColor Yellow
-    Write-Host "      لطفاً Docker Desktop را از آدرس زیر نصب کنید:" -ForegroundColor Yellow
-    Write-Host "      https://www.docker.com/products/docker-desktop/" -ForegroundColor White
-    Start-Process "https://www.docker.com/products/docker-desktop/"
-    Write-Host "      پس از نصب، دوباره این اسکریپت را اجرا کنید." -ForegroundColor Yellow
+$python = Get-PythonCommand
+if (-not $python) {
+    Write-Host "[1/5] پایتون ۳.۱۰ یا بالاتر یافت نشد." -ForegroundColor Yellow
+    Write-Host "      لطفاً Python 3.11 را از آدرس زیر نصب کنید و گزینهٔ" -ForegroundColor Yellow
+    Write-Host "      'Add python.exe to PATH' را حتماً تیک بزنید:" -ForegroundColor Yellow
+    Write-Host "      https://www.python.org/downloads/release/python-3119/" -ForegroundColor White
+    Start-Process "https://www.python.org/downloads/"
     exit 1
 }
-Write-Host "[1/4] Docker یافت شد." -ForegroundColor Green
+Write-Host "[1/5] پایتون $($python.Version) یافت شد." -ForegroundColor Green
 
-if (-not (Test-DockerDaemon)) {
-    Write-Host "      Docker در حال اجرا نیست؛ در حال تلاش برای راه‌اندازی..." -ForegroundColor Yellow
-    $desktop = @("C:\Program Files\Docker\Docker\Docker Desktop.exe", "$env:LOCALAPPDATA\Docker\Docker Desktop.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($desktop) { Start-Process $desktop }
-    $attempts = 0
-    while (-not (Test-DockerDaemon) -and $attempts -lt 30) {
-        Start-Sleep -Seconds 4
-        $attempts++
-    }
-    if (-not (Test-DockerDaemon)) {
-        Write-Host "      Docker هنوز بالا نیامده. Docker Desktop را باز و صبر کنید تا سبز شود،" -ForegroundColor Red
-        Write-Host "      سپس دوباره اجرا کنید." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "      Docker آماده شد." -ForegroundColor Green
+# ------------------------------------------------------------------ 2. venv
+Write-Host ""
+Write-Host "[2/5] ساخت محیط مجازی و نصب وابستگی‌ها (چند دقیقه طول می‌کشد)" -ForegroundColor Green
+$venv = Join-Path $InstallDir ".venv"
+$venvPython = Join-Path $venv "Scripts\python.exe"
+
+if (-not (Test-Path -LiteralPath $venvPython)) {
+    & $python.Exe @($python.Args + @("-m", "venv", $venv))
+    if ($LASTEXITCODE -ne 0) { throw "ساخت محیط مجازی ناموفق بود" }
 }
 
-# ---------------------------------------------------------------- 2. .env
+& $venvPython -m pip install --upgrade pip --quiet
+foreach ($service in @("api", "face-service")) {
+    $requirements = Join-Path $InstallDir "services\$service\requirements.txt"
+    Write-Host "      نصب وابستگی‌های $service ..." -ForegroundColor DarkGray
+    & $venvPython -m pip install --quiet -r $requirements
+    if ($LASTEXITCODE -ne 0) { throw "نصب وابستگی‌های $service ناموفق بود" }
+}
+Write-Host "      وابستگی‌ها نصب شد." -ForegroundColor Green
+
+# ------------------------------------------------------------------- 3. web
 Write-Host ""
-Write-Host "[2/4] آماده‌سازی فایل .env" -ForegroundColor Green
+Write-Host "[3/5] پنل وب" -ForegroundColor Green
+$distIndex = Join-Path $InstallDir "web\dist\index.html"
+if (Test-Path -LiteralPath $distIndex) {
+    Write-Host "      پنل از قبل build شده است." -ForegroundColor Green
+} elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+    Push-Location (Join-Path $InstallDir "web")
+    try {
+        npm install --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { throw "npm install ناموفق بود" }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "build پنل ناموفق بود" }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "      پنل build شد." -ForegroundColor Green
+} else {
+    Write-Host "      Node.js یافت نشد و پنل build نشده است." -ForegroundColor Yellow
+    Write-Host "      یا Node.js نصب کنید (https://nodejs.org) و دوباره اجرا کنید،" -ForegroundColor Yellow
+    Write-Host "      یا پوشهٔ web\dist را از یک نصب دیگر کپی کنید." -ForegroundColor Yellow
+    Write-Host "      API بدون پنل هم کار می‌کند: http://localhost:8000/docs" -ForegroundColor Yellow
+}
+
+# ------------------------------------------------------------------ 4. .env
+Write-Host ""
+Write-Host "[4/5] آماده‌سازی فایل .env" -ForegroundColor Green
 $envPath = Join-Path $InstallDir ".env"
 if (-not (Test-Path -LiteralPath $envPath)) {
     Copy-Item -LiteralPath (Join-Path $InstallDir ".env.example") -Destination $envPath
+    $content = Get-Content -LiteralPath $envPath -Raw
 
-    # Secure random values
-    $jwt = (1..32 | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) }) -join ''
-    $serviceKey = (1..24 | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) }) -join ''
-    $pgPass = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
-    $fernet = "TEMP" # replaced below if cryptography is available
+    # Every default secret is replaced on first install; leaving them in place
+    # would ship the same JWT and encryption keys to every hotel.
+    $jwt = & $venvPython -c "import secrets; print(secrets.token_hex(32))"
+    $fernet = & $venvPython -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    $serviceKey = & $venvPython -c "import secrets; print(secrets.token_urlsafe(32))"
 
-    # Fernet key via python if available
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        try {
-            $fernet = python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>$null
-            if ($LASTEXITCODE -ne 0 -or -not $fernet) { $fernet = "TEMP" }
-        } catch { $fernet = "TEMP" }
-    }
-
-    $c = Get-Content -LiteralPath $envPath -Raw
-    $c = $c -replace '^POSTGRES_PASSWORD=change-me$', ("POSTGRES_PASSWORD=" + $pgPass)
-    $c = $c -replace '^JWT_SECRET=change-me-to-a-random-32-byte-hex-string$', ("JWT_SECRET=" + $jwt)
-    $c = $c -replace '^SERVICE_API_KEY=change-me-service-key$', ("SERVICE_API_KEY=" + $serviceKey)
-    $c = $c -replace '^SECRET_ENCRYPTION_KEY=$', ("SECRET_ENCRYPTION_KEY=" + $fernet)
-    Set-Content -LiteralPath $envPath -Value $c -Encoding ASCII
-
-    Write-Host "      .env ساخته و با رمزهای تصادفی امن شد." -ForegroundColor Green
+    $content = $content -replace "(?m)^JWT_SECRET=.*$", "JWT_SECRET=$jwt"
+    $content = $content -replace "(?m)^SECRET_ENCRYPTION_KEY=.*$", "SECRET_ENCRYPTION_KEY=$fernet"
+    $content = $content -replace "(?m)^SERVICE_API_KEY=.*$", "SERVICE_API_KEY=$serviceKey"
+    Set-Content -LiteralPath $envPath -Value $content -Encoding utf8 -NoNewline
+    Write-Host "      .env ساخته شد و رمزها به‌صورت تصادفی تولید شدند." -ForegroundColor Green
 } else {
-    Write-Host "      .env از قبل وجود دارد — بدون تغییر." -ForegroundColor Green
+    Write-Host "      .env از قبل وجود دارد؛ دست‌نخورده ماند." -ForegroundColor Green
 }
 
-# ---------------------------------------------------------------- 3. Ports
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir "data\media") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir "data\logs") | Out-Null
+
+# ----------------------------------------------------------------- 5. start
 Write-Host ""
-Write-Host "[3/4] بررسی پورت‌ها" -ForegroundColor Green
-$envFile = Get-Content -LiteralPath $envPath
-$webPort = [int](($envFile | Where-Object { $_ -match '^WEB_PORT=' }) -replace '^WEB_PORT=', '')
-$pgPort  = [int](($envFile | Where-Object { $_ -match '^POSTGRES_PORT=' }) -replace '^POSTGRES_PORT=', '')
-if (-not $webPort) { $webPort = 4000 }
-if (-not $pgPort)  { $pgPort = 5432 }
-
-function Test-PortFree([int]$port) {
-    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    return -not $conn
-}
-
-foreach ($p in @(@{Name="WEB_PORT"; Port=$webPort; Label="پنل مدیریت"},
-                 @{Name="POSTGRES_PORT"; Port=$pgPort; Label="پایگاه داده"})) {
-    if (-not (Test-PortFree $p.Port)) {
-        Write-Host ("      پورت {0} ({1}) اشغال است." -f $p.Port, $p.Label) -ForegroundColor Yellow
-        $auto = $p.Port + 1
-        while (-not (Test-PortFree $auto)) { $auto++ }
-
-        $chosen = $auto
-        try {
-            $input = Read-Host ("      پورت جدید برای {0} را وارد کنید (خالی = {1}): " -f $p.Label, $auto)
-            if ($input) { $chosen = [int]$input }
-        } catch {
-            Write-Host ("      حالت غیرتعاملی؛ پورت {0} خودکار انتخاب شد." -f $auto) -ForegroundColor DarkGray
-        }
-
-        $envFile = $envFile -replace ("^{0}=.*$" -f $p.Name), ("{0}={1}" -f $p.Name, $chosen)
-        Set-Content -LiteralPath $envPath -Value $envFile -Encoding ASCII
-        Write-Host ("      {0} → {1}" -f $p.Name, $chosen) -ForegroundColor Green
-    } else {
-        Write-Host ("      پورت {0} ({1}) آزاد است." -f $p.Port, $p.Label) -ForegroundColor DarkGray
-    }
-}
-
-# ---------------------------------------------------------------- 4. Compose
-Write-Host ""
-Write-Host "[4/4] ساخت و راه‌اندازی کانتینرها (چند دقیقه)" -ForegroundColor Green
-Write-Host "      اولین بار مدل تشخیص چهره (~300MB) دانلود می‌شود." -ForegroundColor DarkGray
-
-Push-Location $InstallDir
-try {
-    docker compose up -d --build
-    if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
-} finally {
-    Pop-Location
-}
-
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  نصب کامل شد! سامانه در حال اجراست." -ForegroundColor Cyan
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host ("  پنل مدیریت : http://localhost:{0}" -f $webPort) -ForegroundColor White
-Write-Host "  ورود اولیه : admin / admin  (حتماً تغییر دهید)" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "  دستورات: .\scripts\status.ps1 | .\scripts\logs.ps1 | .\scripts\stop.ps1" -ForegroundColor DarkGray
+Write-Host "[5/5] راه‌اندازی سامانه" -ForegroundColor Green
+& (Join-Path $PSScriptRoot "start.ps1")
