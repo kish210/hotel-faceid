@@ -88,7 +88,7 @@ class RecognizeRequest(BaseModel):
 
 
 class RecognizeResponse(BaseModel):
-    person_id: uuid.UUID | None = None
+    person_id: uuid.UUID
     is_new_person: bool
     similarity: float | None
     event_id: int | None

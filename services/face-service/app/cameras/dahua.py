@@ -43,9 +43,12 @@ class DahuaCamera(BaseCamera):
 
     def device_events(self) -> Iterator[DeviceEvent]:
         """Attach to the Dahua event manager and yield face/crossing events."""
-        path = f"/cgi-bin/eventManager.cgi?action=attach&codes=[{quote(EVENT_CODES)}]"
+        url = (
+            f"http://{self.config.host}:{self.config.port}"
+            f"/cgi-bin/eventManager.cgi?action=attach&codes=[{quote(EVENT_CODES)}]"
+        )
 
-        with self.http_get(path, stream=True, timeout=(10.0, None)) as response:
+        with self.http_get(url, stream=True, timeout=(10.0, None)) as response:
             response.raise_for_status()
             buffer = b""
             boundary = self.read_boundary(response.headers.get("Content-Type", ""))

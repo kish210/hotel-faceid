@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .db import SessionLocal
+from .db import SessionLocal, init_db
 from .routers import audit, auth, cameras, dashboard, events, faces, persons, users
 from .services import report_email, stays, storage
 
@@ -35,6 +35,7 @@ async def _maintenance_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    init_db()
     Path(settings.media_root).mkdir(parents=True, exist_ok=True)
     task = asyncio.create_task(_maintenance_loop())
     try:

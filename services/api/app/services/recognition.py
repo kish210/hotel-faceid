@@ -22,6 +22,7 @@ from ..models import (
 from ..schemas import RecognizeRequest, RecognizeResponse
 from . import stays
 from .storage import save_face_image
+from .vector_search import find_match
 
 log = logging.getLogger(__name__)
 
@@ -30,28 +31,6 @@ log = logging.getLogger(__name__)
 ENROLL_LOWER = 0.50
 ENROLL_UPPER = 0.85
 MAX_EMBEDDINGS_PER_PERSON = 15
-
-
-def find_match(db: Session, embedding: list[float]) -> tuple[Person | None, float | None]:
-    """Nearest neighbour search over stored face vectors (cosine distance).
-
-    Unlike a hard gate, this always returns the closest stored identity; the
-    caller decides how similar is similar enough.
-    """
-    distance = FaceEmbedding.embedding.cosine_distance(embedding).label("distance")
-    row = db.execute(
-        select(FaceEmbedding, distance)
-        .join(Person, Person.id == FaceEmbedding.person_id)
-        .where(Person.deleted_at.is_(None), Person.merged_into.is_(None))
-        .order_by(distance)
-        .limit(1)
-    ).first()
-
-    if row is None:
-        return None, None
-
-    face, dist = row
-    return face.person, 1.0 - float(dist)
 
 
 def resolve_direction(db: Session, person_id: uuid.UUID, camera: Camera | None,
@@ -98,42 +77,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
     camera = db.get(Camera, payload.camera_id) if payload.camera_id else None
 
     person, similarity = find_match(db, payload.embedding)
-
-    # The nearest identity sits in the ambiguous band — under pose/lighting
-    # variation this is almost certainly the same person. Never fork a
-    # duplicate identity here; drop the sighting instead.
-    if (
-        similarity is not None
-        and settings.face_weak_match_min <= similarity < settings.face_match_threshold
-    ):
-        db.commit()
-        return RecognizeResponse(
-            person_id=person.id,
-            is_new_person=False,
-            similarity=similarity,
-            event_id=None,
-            direction=None,
-            debounced=True,
-        )
-
-    is_new = person is None or similarity is None or similarity < settings.face_weak_match_min
-
-    # No confident identity AND the capture is blurry/tiny — registering it
-    # would just pollute the guest list with a second copy of the same face.
-    if (
-        is_new
-        and payload.quality is not None
-        and payload.quality < settings.new_person_min_quality
-    ):
-        db.commit()
-        return RecognizeResponse(
-            person_id=None,
-            is_new_person=False,
-            similarity=similarity,
-            event_id=None,
-            direction=None,
-            debounced=True,
-        )
+    is_new = person is None
 
     image_path: str | None = None
     if payload.image_base64:

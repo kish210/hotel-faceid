@@ -50,7 +50,9 @@ class HikvisionCamera(BaseCamera):
         The camera holds the connection open and pushes one part per event,
         so this is a long-lived generator, not a poll.
         """
-        with self.http_get("/ISAPI/Event/notification/alertStream", stream=True, timeout=(10.0, None)) as response:
+        url = self._isapi("/ISAPI/Event/notification/alertStream")
+
+        with self.http_get(url, stream=True, timeout=(10.0, None)) as response:
             response.raise_for_status()
             buffer = b""
             boundary = self.read_boundary(response.headers.get("Content-Type", ""))

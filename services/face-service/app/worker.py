@@ -35,7 +35,6 @@ class CameraWorker(threading.Thread):
 
     # ------------------------------------------------------------- lifecycle
     def run(self) -> None:
-        self.api.heartbeat(self.camera.config.id, online=True)
         while not self._stop.is_set():
             try:
                 if self.camera.supports_device_events():

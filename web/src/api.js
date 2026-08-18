@@ -66,26 +66,6 @@ export const api = {
   updateCamera: (id, body) =>
     request(`/api/cameras/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCamera: (id) => request(`/api/cameras/${id}`, { method: "DELETE" }),
-  checkCamera: (id) => request(`/api/cameras/${id}/check-connection`, { method: "POST" }),
-
-  cameraSnapshot: async (id) => {
-    const token = getToken();
-    const response = await fetch(`/api/cameras/${id}/snapshot`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      let detail = `خطای دریافت تصویر (${response.status})`;
-      try {
-        const body = await response.json();
-        detail = body.detail || detail;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new Error(detail);
-    }
-    return URL.createObjectURL(await response.blob());
-  },
 
   dailyReport: (start, end) =>
     request(`/api/reports/daily?${new URLSearchParams({ ...(start && { start }), ...(end && { end }) })}`),

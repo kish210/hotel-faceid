@@ -1,8 +1,7 @@
 -- Hotel Face-ID / Access-Log schema
--- PostgreSQL 16 + pgvector
+-- PostgreSQL 16 (portable schema: vectors live in JSONB, matched via numpy)
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ---------------------------------------------------------------- persons
 CREATE TYPE person_role AS ENUM ('guest', 'staff', 'visitor', 'unknown');
@@ -27,19 +26,18 @@ CREATE INDEX idx_persons_last_seen  ON persons(last_seen_at DESC);
 -- ------------------------------------------------------- face_embeddings
 -- Multiple embeddings per person improve re-identification across
 -- lighting/pose variation. 512 dims == ArcFace (InsightFace buffalo_l).
+-- The vector is stored as a JSON array and matched in-process with numpy
+-- (portable across Postgres and SQLite, no pgvector needed).
 CREATE TABLE face_embeddings (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     person_id   UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
-    embedding   vector(512) NOT NULL,
+    embedding   JSONB NOT NULL,
     image_path  TEXT,
     quality     REAL,                            -- 0..1 face quality score
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_face_embeddings_person ON face_embeddings(person_id);
--- Cosine distance index; lists tuned for a few 100k rows.
-CREATE INDEX idx_face_embeddings_vec
-    ON face_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ---------------------------------------------------------------- cameras
 CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'onvif', 'generic');

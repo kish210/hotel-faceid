@@ -6,7 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+psycopg://hotel:hotel@localhost:5432/hotel_faceid"
+    # Portable default: a local SQLite file works without Postgres/pgvector.
+    database_url: str = "sqlite:///./data/hotel_faceid.db"
 
     jwt_secret: str = "dev-secret-do-not-use-in-production"
     jwt_algorithm: str = "HS256"
@@ -15,23 +16,17 @@ class Settings(BaseSettings):
     secret_encryption_key: str = ""
     service_api_key: str = "change-me-service-key"
 
-    media_root: str = "/data/media"
+    media_root: str = "./data/media"
     face_image_retention_days: int = 30
 
     face_match_threshold: float = 0.42
-    # Between this and face_match_threshold the nearest identity is most
-    # likely the same person under pose/lighting variation — never fork a new
-    # identity there, just treat the sighting as a no-op.
-    face_weak_match_min: float = 0.20
-    # New identities are only registered for sharp, confident captures.
-    new_person_min_quality: float = 0.5
     event_debounce_seconds: int = 60
 
     stay_timeout_hours: int = 12
     hotel_timezone: str = "Asia/Tehran"
 
     # Photo-based guest search — where the face-service embed API lives.
-    face_service_url: str = "http://face-service:8001"
+    face_service_url: str = "http://127.0.0.1:8001"
 
     # Periodic email report.
     smtp_host: str = ""

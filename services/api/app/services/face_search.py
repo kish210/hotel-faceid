@@ -11,8 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import FaceEmbedding, Person, PersonRole
+from ..models import FaceEmbedding, PersonRole
 from ..schemas import FaceSearchMatch
+from .vector_search import top_matches
 
 log = logging.getLogger(__name__)
 
@@ -55,18 +56,10 @@ def search_guests(
     if result is None:
         return [], None
 
-    distance = FaceEmbedding.embedding.cosine_distance(result["embedding"]).label("distance")
-    rows = db.execute(
-        select(FaceEmbedding, distance)
-        .join(Person, Person.id == FaceEmbedding.person_id)
-        .where(Person.deleted_at.is_(None), Person.merged_into.is_(None))
-        .order_by(distance)
-        .limit(SEARCH_LIMIT)
-    ).all()
-
+    ranked = top_matches(db, result["embedding"], SEARCH_LIMIT)
     matches: list[FaceSearchMatch] = []
-    for face, dist in rows:
-        similarity = 1.0 - float(dist)
+    for face, dist in ranked:
+        similarity = 1.0 - dist
         if similarity < MIN_SIMILARITY:
             continue
         person = face.person

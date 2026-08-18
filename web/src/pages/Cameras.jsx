@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Video, VideoOff, Camera, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Trash2, Video, VideoOff, Camera } from "lucide-react";
 import { api, connectLiveUpdates } from "../api.js";
 import { PURPOSE_LABELS, formatDateTime } from "../format.js";
 import { PageHeader } from "@/components/page-header";
@@ -52,34 +52,10 @@ export default function Cameras() {
   const [form, setForm] = useState(EMPTY);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(null);
-  const [testState, setTestState] = useState({});
-  const [previews, setPreviews] = useState({});
-  const [previewErrors, setPreviewErrors] = useState({});
-  const camerasRef = useRef([]);
-  const previewsRef = useRef({});
-
-  async function refreshPreview(id) {
-    try {
-      const url = await api.cameraSnapshot(id);
-      setPreviews((prev) => {
-        if (prev[id]) URL.revokeObjectURL(prev[id]);
-        previewsRef.current[id] = url;
-        return { ...prev, [id]: url };
-      });
-      setPreviewErrors((prev) => ({ ...prev, [id]: null }));
-    } catch (err) {
-      setPreviewErrors((prev) => ({ ...prev, [id]: err.message }));
-    }
-  }
 
   async function load() {
     try {
-      const list = await api.cameras();
-      setCameras(list);
-      camerasRef.current = list;
-      list.forEach((camera) => {
-        if (camera.online) refreshPreview(camera.id);
-      });
+      setCameras(await api.cameras());
     } catch (err) {
       setError(err.message);
     }
@@ -88,13 +64,6 @@ export default function Cameras() {
   useEffect(() => {
     load();
     const timer = setInterval(load, 30000);
-
-    const previewTimer = setInterval(() => {
-      camerasRef.current.forEach((camera) => {
-        if (camera.online) refreshPreview(camera.id);
-      });
-    }, 10000);
-
     const disconnect = connectLiveUpdates((message) => {
       if (message.type === "camera-status") {
         setCameras((prev) =>
@@ -110,26 +79,11 @@ export default function Cameras() {
         );
       }
     });
-
     return () => {
       clearInterval(timer);
-      clearInterval(previewTimer);
       disconnect();
-      Object.values(previewsRef.current).forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
-
-  async function runCheck(id) {
-    setTestState((s) => ({ ...s, [id]: { loading: true } }));
-    try {
-      const result = await api.checkCamera(id);
-      setTestState((s) => ({ ...s, [id]: { loading: false, message: result.detail, ok: result.online } }));
-      load();
-      refreshPreview(id);
-    } catch (err) {
-      setTestState((s) => ({ ...s, [id]: { loading: false, message: err.message, ok: false } }));
-    }
-  }
 
   async function create(event) {
     event.preventDefault();
@@ -240,10 +194,9 @@ export default function Cameras() {
                 <TableHead>نقش</TableHead>
                 <TableHead>محل</TableHead>
                 <TableHead>آدرس</TableHead>
-                <TableHead>تصویر</TableHead>
                 <TableHead>وضعیت</TableHead>
                 <TableHead>آخرین ارتباط</TableHead>
-                <TableHead className="w-44" />
+                <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -260,72 +213,21 @@ export default function Cameras() {
                   <TableCell>{camera.location || "—"}</TableCell>
                   <TableCell className="font-mono text-xs" dir="ltr">{camera.host}:{camera.port}</TableCell>
                   <TableCell>
-                    {camera.online ? (
-                      <button
-                        type="button"
-                        onClick={() => refreshPreview(camera.id)}
-                        title="تازه‌سازی تصویر"
-                        className="relative block h-12 w-20 overflow-hidden rounded-md border text-left"
-                      >
-                        {previews[camera.id] ? (
-                          <img
-                            src={previews[camera.id]}
-                            alt={camera.name}
-                            className="size-full object-cover"
-                          />
-                        ) : previewErrors[camera.id] ? (
-                          <span className="flex h-full items-center justify-center px-1 text-center text-[10px] leading-tight text-muted-foreground">
-                            بدون تصویر
-                          </span>
-                        ) : (
-                          <span className="flex h-full items-center justify-center text-[10px] text-muted-foreground">
-                            در حال دریافت…
-                          </span>
-                        )}
-                      </button>
-                    ) : (
-                      <div className="flex h-12 w-20 items-center justify-center rounded-md border text-center text-[10px] text-muted-foreground">
-                        آفلاین
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>
                     <Badge variant={camera.online ? "success" : "secondary"}>
                       {camera.online ? "آنلاین" : "آفلاین"}
                     </Badge>
-                    {testState[camera.id]?.message && (
-                      <div
-                        className={`mt-1 max-w-[180px] text-[11px] leading-tight ${
-                          testState[camera.id].ok ? "text-emerald-600" : "text-destructive"
-                        }`}
-                      >
-                        {testState[camera.id].message}
-                      </div>
-                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDateTime(camera.last_seen_at)}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => runCheck(camera.id)}
-                        disabled={testState[camera.id]?.loading}
-                        className="text-xs"
-                      >
-                        <RefreshCw className={`size-3.5 ${testState[camera.id]?.loading ? "animate-spin" : ""}`} />
-                        تست اتصال
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => remove(camera.id)} className="text-destructive">
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => remove(camera.id)} className="text-destructive">
+                      <Trash2 className="size-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
               {cameras.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan="9" className="text-muted-foreground py-10 text-center">
+                  <TableCell colSpan="8" className="text-muted-foreground py-10 text-center">
                     <Camera className="mx-auto mb-2 size-8 opacity-40" />
                     هنوز دوربینی ثبت نشده است.
                   </TableCell>

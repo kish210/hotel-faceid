@@ -7,7 +7,6 @@ import signal
 import sys
 import threading
 import time
-from dataclasses import asdict
 
 from .api_client import ApiClient
 from .cameras.registry import build_camera
@@ -25,7 +24,6 @@ class Supervisor:
         self.api = ApiClient()
         self.engine = FaceEngine()
         self.workers: dict[str, CameraWorker] = {}
-        self.sigs: dict[str, tuple] = {}
         self.running = True
 
     def _run_embed_api(self) -> None:
@@ -47,19 +45,10 @@ class Supervisor:
             return
 
         wanted = {config.id: config for config in cameras}
-        wanted_sigs = {
-            config.id: tuple(sorted(asdict(config).items()))
-            for config in cameras
-        }
 
         for camera_id in list(self.workers):
-            if (
-                camera_id not in wanted
-                or not self.workers[camera_id].is_alive()
-                or self.sigs.get(camera_id) != wanted_sigs.get(camera_id)
-            ):
-                log.info("Restarting worker %s (config changed)", camera_id)
-                self.sigs.pop(camera_id, None)
+            if camera_id not in wanted or not self.workers[camera_id].is_alive():
+                log.info("Stopping worker %s", camera_id)
                 self.workers.pop(camera_id).stop()
 
         for camera_id, config in wanted.items():
@@ -68,7 +57,6 @@ class Supervisor:
             worker = CameraWorker(build_camera(config), self.engine, self.api)
             worker.start()
             self.workers[camera_id] = worker
-            self.sigs[camera_id] = wanted_sigs[camera_id]
             log.info("Started worker for %s (%s)", config.name, config.brand)
 
     def shutdown(self, *_args) -> None:
