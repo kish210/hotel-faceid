@@ -98,7 +98,10 @@ Name: "{autoprograms}\{#MyAppName}\توقف سامانه"; Filename: "{app}\scri
 Name: "{autoprograms}\{#MyAppName}\وضعیت سامانه"; Filename: "{app}\scripts\run-status.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\گزارش خطا برای پشتیبانی"; Filename: "{app}\scripts\run-debug.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\راهنما"; Filename: "{app}\scripts\README-install.md"
-Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\scripts\run-start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"; Tasks: desktopicon
+; {autodesktop}, not {commondesktop}: Setup runs unelevated, and writing to the
+; all-users desktop needs administrator rights — it fails with "access denied"
+; at the very end of an otherwise successful installation.
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\scripts\run-start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"; Tasks: desktopicon
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\scripts\run-start-quiet.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"; Tasks: autostart
 
 [Run]
