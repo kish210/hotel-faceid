@@ -11,6 +11,7 @@ import logging
 
 from .anpr import AnprModule, is_available as anpr_available
 from .base import Alert, AnalyticsModule, FrameContext
+from .fire import SmokeFireModule
 from .motion import (
     CrowdModule,
     FightModule,
@@ -18,15 +19,27 @@ from .motion import (
     LoiteringModule,
     ObjectLeftModule,
 )
+from .movement import LineCrossModule, RunningModule
+from .scene import BlackoutModule, DefocusModule, TamperModule
 
 log = logging.getLogger(__name__)
 
 MODULES: dict[str, type[AnalyticsModule]] = {
+    # people and behaviour
     IntrusionModule.id: IntrusionModule,
     FightModule.id: FightModule,
     CrowdModule.id: CrowdModule,
     LoiteringModule.id: LoiteringModule,
+    RunningModule.id: RunningModule,
+    LineCrossModule.id: LineCrossModule,
     ObjectLeftModule.id: ObjectLeftModule,
+    # safety
+    SmokeFireModule.id: SmokeFireModule,
+    # the camera's own health
+    TamperModule.id: TamperModule,
+    DefocusModule.id: DefocusModule,
+    BlackoutModule.id: BlackoutModule,
+    # pack-backed
     AnprModule.id: AnprModule,
 }
 

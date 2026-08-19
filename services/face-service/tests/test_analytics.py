@@ -10,12 +10,15 @@ import numpy as np
 
 from app.analytics import build_pipeline
 from app.analytics.base import FrameContext
+from app.analytics.fire import SmokeFireModule
 from app.analytics.motion import (
     CrowdModule,
     FightModule,
     IntrusionModule,
     LoiteringModule,
 )
+from app.analytics.movement import LineCrossModule, RunningModule
+from app.analytics.scene import BlackoutModule, DefocusModule, TamperModule
 
 
 # Ten frames is plenty to learn a synthetic scene; a real camera uses 30.
@@ -129,6 +132,122 @@ def test_loitering_resets_when_the_spot_empties():
     time.sleep(0.25)
     feed(module, blank(), [])  # they left
     assert feed(module, blank(), [(100, 100, 40, 40)]) is None
+
+
+# ------------------------------------------------------------ camera health
+def test_tamper_fires_when_the_view_is_covered():
+    module = TamperModule("cam", {"sustain_seconds": 0.2, "change_threshold": 0.5})
+    feed(module, blank(), times=3)  # learn the room
+    covered = blank(240)  # something bright held over the lens
+
+    assert feed(module, covered) is None, "one frame is not tampering"
+    time.sleep(0.25)
+    alert = feed(module, covered)
+    assert alert is not None and alert.severity == "critical"
+
+
+def test_tamper_ignores_a_stable_scene():
+    module = TamperModule("cam", {"sustain_seconds": 0.1})
+    assert feed(module, blank(), times=20) is None
+
+
+def test_defocus_fires_on_a_flat_image():
+    module = DefocusModule("cam", {"sustain_seconds": 0.2, "sharpness_threshold": 20.0})
+    assert feed(module, blank()) is None
+    time.sleep(0.25)
+    alert = feed(module, blank())
+    assert alert is not None and alert.detail["sharpness"] < 20.0
+
+
+def test_defocus_quiet_on_a_sharp_image():
+    module = DefocusModule("cam", {"sustain_seconds": 0.1, "sharpness_threshold": 20.0})
+    detailed = np.random.default_rng(7).integers(0, 255, (240, 320, 3), dtype=np.uint8)
+    feed(module, detailed)
+    time.sleep(0.15)
+    assert feed(module, detailed) is None, "a detailed image is in focus"
+
+
+def test_blackout_fires_on_a_dark_frame():
+    module = BlackoutModule("cam", {"sustain_seconds": 0.2})
+    dark = blank(3)
+    assert feed(module, dark) is None
+    time.sleep(0.25)
+    alert = feed(module, dark)
+    assert alert is not None and "تاریک" in alert.detail["reason"]
+
+
+# ------------------------------------------------------------- smoke / fire
+def flickering_flame(step):
+    """Orange, and never twice the same — which is what marks it as fire.
+
+    A rectangle that holds perfectly still gets absorbed into the background
+    within a frame or two, exactly as a painted wall should be.
+    """
+    frame = blank()
+    top = 60 + (step % 3) * 6
+    frame[top : top + 120, 60:220] = (20, 140 + (step % 2) * 40, 250)  # BGR orange
+    return frame
+
+
+def test_smoke_fire_needs_moving_flame_colour():
+    module = SmokeFireModule(
+        "cam", {"warmup_frames": 3, "sustain_seconds": 0.2, "min_area_percent": 0.5}
+    )
+    feed(module, blank(), times=5)
+
+    assert feed(module, flickering_flame(0)) is None, "first sighting only starts the timer"
+    time.sleep(0.25)
+
+    alert = None
+    for step in range(1, 6):
+        alert = module.process(FrameContext(frame=flickering_flame(step), faces=[]))
+        if alert is not None:
+            break
+    assert alert is not None, "sustained flickering flame colour should alert"
+    assert alert.detail["kind"] == "آتش" and alert.severity == "critical"
+
+
+def test_smoke_fire_ignores_a_static_scene():
+    module = SmokeFireModule("cam", {"warmup_frames": 3, "sustain_seconds": 0.1})
+    assert feed(module, blank(), times=20) is None
+
+
+# ----------------------------------------------------------------- movement
+def test_running_needs_a_fast_move():
+    # 100px of a 320px-wide frame: above the 10% threshold, below the 35% the
+    # tracker will still accept as one person.
+    module = RunningModule("cam", {"speed_threshold": 0.1, "min_frames": 1})
+    feed(module, blank(), [(10, 100, 40, 40)])
+    alert = feed(module, blank(), [(110, 100, 40, 40)])
+    assert alert is not None and alert.detail["speed_percent_of_frame"] > 10
+
+
+def test_running_ignores_a_walk():
+    module = RunningModule("cam", {"speed_threshold": 0.3, "min_frames": 1})
+    feed(module, blank(), [(100, 100, 40, 40)])
+    assert feed(module, blank(), [(112, 100, 40, 40)]) is None
+
+
+def test_running_ignores_a_jump_too_big_to_be_one_person():
+    # Beyond max_step the two boxes are not paired at all: reporting this as a
+    # sprint is how a busy corridor would produce constant false alarms.
+    module = RunningModule("cam", {"speed_threshold": 0.1, "min_frames": 1, "max_step": 0.35})
+    feed(module, blank(), [(10, 100, 40, 40)])
+    assert feed(module, blank(), [(300, 100, 40, 40)]) is None
+
+
+def test_line_cross_reports_a_crossing():
+    module = LineCrossModule("cam", {"line": [[0.0, 0.5], [1.0, 0.5]], "cooldown_seconds": 0})
+    feed(module, blank(), [(100, 20, 40, 40)])  # above the line
+    alert = feed(module, blank(), [(100, 190, 40, 40)])  # now below it
+    assert alert is not None
+    assert alert.detail["forward_total"] + alert.detail["backward_total"] == 1
+
+
+def test_line_cross_quiet_without_a_crossing():
+    module = LineCrossModule("cam", {"line": [[0.0, 0.5], [1.0, 0.5]]})
+    feed(module, blank(), [(100, 20, 40, 40)])
+    assert feed(module, blank(), [(120, 30, 40, 40)]) is None
 
 
 # -------------------------------------------------------------- pipeline

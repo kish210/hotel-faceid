@@ -76,6 +76,8 @@ export const api = {
   installModule: (id, body = {}) =>
     request(`/api/analytics/modules/${id}/install`, { method: "POST", body: JSON.stringify(body) }),
   removeModule: (id) => request(`/api/analytics/modules/${id}`, { method: "DELETE" }),
+  refreshModules: (body = {}) =>
+    request("/api/analytics/modules/refresh", { method: "POST", body: JSON.stringify(body) }),
 
   dailyReport: (start, end) =>
     request(`/api/reports/daily?${new URLSearchParams({ ...(start && { start }), ...(end && { end }) })}`),

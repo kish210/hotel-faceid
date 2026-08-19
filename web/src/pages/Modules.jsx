@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Boxes, Download, Loader2, Trash2, CheckCircle2 } from "lucide-react";
+import { Boxes, Download, Loader2, Trash2, CheckCircle2, RefreshCw } from "lucide-react";
 import { api } from "../api.js";
 import { CPU_COST_LABELS } from "../format.js";
 import { PageHeader } from "@/components/page-header";
@@ -30,6 +30,21 @@ export default function Modules() {
   useEffect(() => {
     load();
   }, []);
+
+  async function refresh() {
+    setBusy("refresh");
+    setError(null);
+    setNotice(null);
+    try {
+      const list = await api.refreshModules();
+      setModules(list);
+      setNotice(`فهرست به‌روز شد — ${list.length} ماژول در دسترس است.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function install(id) {
     setBusy(id);
@@ -78,7 +93,16 @@ export default function Modules() {
       <PageHeader
         title="ماژول‌های تحلیل تصویر"
         description="قابلیت‌هایی که می‌توانید روی هر دوربین فعال کنید"
-      />
+      >
+        <Button variant="outline" onClick={refresh} disabled={busy === "refresh"}>
+          {busy === "refresh" ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <RefreshCw className="size-4" />
+          )}
+          دریافت فهرست جدید
+        </Button>
+      </PageHeader>
 
       {error && <div className="text-destructive mb-4">{error}</div>}
       {notice && <div className="mb-4 text-emerald-500">{notice}</div>}

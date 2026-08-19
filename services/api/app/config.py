@@ -17,6 +17,16 @@ class Settings(BaseSettings):
     service_api_key: str = "change-me-service-key"
 
     media_root: str = "./data/media"
+
+    # Analytics module catalogue. Empty means "the modules/catalogue.json that
+    # came with this installation"; the panel can pull a newer list from the
+    # repository, which is how a module added later shows up without a rebuild.
+    module_catalogue: str = ""
+    module_registry_url: str = (
+        "https://raw.githubusercontent.com/kish210/hotel-faceid/master/modules/catalogue.json"
+    )
+    # Needed only because the repository is private — a read-only token.
+    module_registry_token: str = ""
     # Built React panel. Empty means "the web/dist folder next to this repo",
     # which is where `npm run build` puts it.
     web_dist: str = ""

@@ -21,6 +21,42 @@ def _usage(db: Session) -> dict[str, int]:
     return counts
 
 
+def _to_out(spec, counts: dict[str, int]) -> AnalyticsModuleOut:
+    return AnalyticsModuleOut(
+        id=spec.id,
+        name=spec.name,
+        description=spec.description,
+        version=spec.version,
+        installed=analytics_modules.is_installed(spec),
+        needs_pack=spec.pack_entry is not None,
+        pack_size_mb=spec.pack_size_mb,
+        cpu_cost=spec.cpu_cost,
+        cameras=counts.get(spec.id, 0),
+        settings=spec.settings,
+    )
+
+
+@router.post("/modules/refresh", response_model=list[AnalyticsModuleOut])
+def refresh_modules(
+    payload: ModuleInstallRequest | None = None,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(UserRole.admin)),
+) -> list[AnalyticsModuleOut]:
+    """Pull the module list from the repository.
+
+    This is what makes a module added after this build was installed appear in
+    the panel: the catalogue is data, not code.
+    """
+    try:
+        count = analytics_modules.refresh_catalogue(payload.source_url if payload else None)
+    except analytics_modules.ModuleError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    log_action(db, actor, "module.refresh", entity="module", detail={"modules": count})
+    counts = _usage(db)
+    return [_to_out(spec, counts) for spec in analytics_modules.CATALOGUE]
+
+
 @router.get("/modules", response_model=list[AnalyticsModuleOut])
 def list_modules(
     db: Session = Depends(get_db),
@@ -28,21 +64,7 @@ def list_modules(
 ) -> list[AnalyticsModuleOut]:
     """Everything the system can watch for, and whether it is ready to use."""
     counts = _usage(db)
-    return [
-        AnalyticsModuleOut(
-            id=spec.id,
-            name=spec.name,
-            description=spec.description,
-            version=spec.version,
-            installed=analytics_modules.is_installed(spec),
-            needs_pack=spec.pack_entry is not None,
-            pack_size_mb=spec.pack_size_mb,
-            cpu_cost=spec.cpu_cost,
-            cameras=counts.get(spec.id, 0),
-            settings=spec.settings,
-        )
-        for spec in analytics_modules.CATALOGUE
-    ]
+    return [_to_out(spec, counts) for spec in analytics_modules.CATALOGUE]
 
 
 @router.post("/modules/{module_id}/install", response_model=AnalyticsModuleOut)
@@ -67,19 +89,7 @@ def install_module(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
     log_action(db, actor, "module.install", entity="module", entity_id=module_id)
-    counts = _usage(db)
-    return AnalyticsModuleOut(
-        id=spec.id,
-        name=spec.name,
-        description=spec.description,
-        version=spec.version,
-        installed=analytics_modules.is_installed(spec),
-        needs_pack=spec.pack_entry is not None,
-        pack_size_mb=spec.pack_size_mb,
-        cpu_cost=spec.cpu_cost,
-        cameras=counts.get(spec.id, 0),
-        settings=spec.settings,
-    )
+    return _to_out(spec, _usage(db))
 
 
 @router.delete("/modules/{module_id}", status_code=status.HTTP_204_NO_CONTENT)

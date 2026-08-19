@@ -1,22 +1,28 @@
 """Catalogue of the image-processing modules an operator can switch on.
 
-Two kinds of module live here:
+The list itself lives in `modules/catalogue.json` at the root of the project
+rather than in this file, so a module can be added or re-described without
+shipping a new build. `refresh_catalogue()` re-reads it from the git repository,
+which is what the admin page's "check for new modules" does.
+
+Two kinds of module appear there:
 
 * **built-in** — the detection code ships with the application and runs on the
   plain CPU using OpenCV only. Nothing to install; switching it on for a camera
   is enough.
-* **pack-backed** — the code ships too, but it needs a model file that is far
-  too large to bundle (plate reading, for one). Those are downloaded on demand
-  into `data/modules/<id>/` from the admin page, and the module only becomes
-  usable once its pack is present.
+* **pack-backed** — the code ships too, but it needs a model file too large to
+  bundle (plate reading, for one). Those are downloaded on demand into
+  `data/modules/<id>/`, and the module only becomes usable once its pack is
+  present.
 
-The face-service reads the same catalogue, so a module added here appears in
-the panel and in the capture pipeline together.
+A module in the catalogue that this build has no code for is still listed, so
+the panel can say "به‌روزرسانی لازم است" instead of silently hiding it.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import shutil
 import zipfile
@@ -47,86 +53,20 @@ class ModuleSpec:
     pack_size_mb: float | None = None
     pack_sha256: str | None = None
 
-
-CATALOGUE: tuple[ModuleSpec, ...] = (
-    ModuleSpec(
-        id="intrusion",
-        name="ورود به منطقهٔ ممنوعه",
-        description=(
-            "هر حرکتی در ناحیهٔ تعیین‌شده (انبار، پشت پیشخوان، درب اضطراری) را "
-            "در ساعات دلخواه گزارش می‌کند."
-        ),
-        version="1.0",
-        cpu_cost="light",
-        settings={
-            "min_area_percent": 1.5,
-            "zone": [],  # empty = whole frame; otherwise [[x,y], …] in 0..1
-            "active_hours": [],  # empty = always; otherwise [[start, end], …]
-            "warmup_frames": 30,  # frames spent learning the empty scene
-            "cooldown_seconds": 60,
-        },
-    ),
-    ModuleSpec(
-        id="crowd",
-        name="تجمع غیرعادی",
-        description="وقتی تعداد افراد در کادر از حد تعیین‌شده بیشتر شود هشدار می‌دهد.",
-        version="1.0",
-        cpu_cost="light",
-        settings={"max_people": 5, "sustain_seconds": 10, "cooldown_seconds": 120},
-    ),
-    ModuleSpec(
-        id="fight",
-        name="درگیری و نزاع",
-        description=(
-            "ترکیب حرکت شدید و ناگهانی با نزدیک بودن چند نفر به هم — برای لابی و "
-            "راهرو. حساسیت را پایین بیاورید تا هشدار اشتباه کمتر شود."
-        ),
-        version="1.0",
-        cpu_cost="moderate",
-        settings={
-            "motion_threshold": 0.045,
-            "min_people": 2,
-            "sustain_seconds": 3,
-            "warmup_frames": 30,
-            "cooldown_seconds": 120,
-        },
-    ),
-    ModuleSpec(
-        id="loitering",
-        name="پرسه‌زنی",
-        description="فردی که بیش از حد معمول در یک نقطه می‌ماند را گزارش می‌کند.",
-        version="1.0",
-        cpu_cost="light",
-        settings={"seconds": 180, "cooldown_seconds": 300},
-    ),
-    ModuleSpec(
-        id="object_left",
-        name="جاگذاشتن یا برداشتن شیء",
-        description=(
-            "شیئی که بی‌صاحب رها شده یا از جای همیشگی‌اش برداشته شده را تشخیص "
-            "می‌دهد — برای چمدان رهاشده و برداشتن وسایل از لابی."
-        ),
-        version="1.0",
-        cpu_cost="moderate",
-        settings={"seconds": 45, "min_area_percent": 0.5, "cooldown_seconds": 180},
-    ),
-    ModuleSpec(
-        id="anpr",
-        name="پلاک‌خوان خودرو",
-        description=(
-            "پلاک خودروهای ورودی/خروجی پارکینگ را می‌خواند و ثبت می‌کند. "
-            "به بستهٔ مدل نیاز دارد و روی دوربین پارکینگ نصب شود."
-        ),
-        version="1.0",
-        cpu_cost="heavy",
-        settings={"min_confidence": 0.55, "cooldown_seconds": 20},
-        pack_entry="plate_detector.onnx",
-        pack_url="https://github.com/kish210/hotel-faceid/releases/download/packs-v1/anpr-1.0.zip",
-        pack_size_mb=48.0,
-    ),
-)
-
-BY_ID = {spec.id: spec for spec in CATALOGUE}
+    @classmethod
+    def from_json(cls, entry: dict) -> ModuleSpec:
+        return cls(
+            id=entry["id"],
+            name=entry.get("name", entry["id"]),
+            description=entry.get("description", ""),
+            version=str(entry.get("version", "1.0")),
+            cpu_cost=entry.get("cpu_cost", "light"),
+            settings=entry.get("settings", {}),
+            pack_entry=entry.get("pack_entry"),
+            pack_url=entry.get("pack_url"),
+            pack_size_mb=entry.get("pack_size_mb"),
+            pack_sha256=entry.get("pack_sha256"),
+        )
 
 
 def modules_root() -> Path:
@@ -149,6 +89,84 @@ class ModuleError(Exception):
     """Raised when a pack cannot be installed."""
 
 
+def catalogue_path() -> Path:
+    """The catalogue shipped with this installation.
+
+    A copy downloaded from the repository is preferred, because that is how a
+    module added after this build was made becomes visible.
+    """
+    downloaded = modules_root() / "catalogue.json"
+    if downloaded.is_file():
+        return downloaded
+
+    if settings.module_catalogue:
+        return Path(settings.module_catalogue)
+    # services/api/app/services/… → the project root, where modules/ lives.
+    return Path(__file__).resolve().parents[4] / "modules" / "catalogue.json"
+
+
+def _load_catalogue() -> tuple[ModuleSpec, ...]:
+    path = catalogue_path()
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        return tuple(ModuleSpec.from_json(entry) for entry in document["modules"])
+    except FileNotFoundError:
+        log.warning("Module catalogue not found at %s", path)
+    except (ValueError, KeyError, TypeError):
+        log.warning("Module catalogue at %s is malformed", path, exc_info=True)
+    return ()
+
+
+#: Loaded once at import; `refresh_catalogue()` replaces it in place.
+CATALOGUE: tuple[ModuleSpec, ...] = _load_catalogue()
+BY_ID: dict[str, ModuleSpec] = {spec.id: spec for spec in CATALOGUE}
+
+
+def reload_catalogue() -> None:
+    """Re-read the catalogue from disk, keeping BY_ID and CATALOGUE in step."""
+    global CATALOGUE, BY_ID
+    CATALOGUE = _load_catalogue()
+    BY_ID = {spec.id: spec for spec in CATALOGUE}
+
+
+def refresh_catalogue(source_url: str | None = None) -> int:
+    """Fetch the module list from the repository and adopt it.
+
+    Returns how many modules the new catalogue holds. The download is written
+    only after it parses, so a broken or truncated response leaves the working
+    catalogue alone.
+    """
+    url = source_url or settings.module_registry_url
+    if not url:
+        raise ModuleError("آدرس مخزن ماژول‌ها تنظیم نشده است")
+
+    try:
+        response = requests.get(url, headers=_registry_headers(), timeout=(10.0, 60.0))
+        response.raise_for_status()
+        document = response.json()
+        modules = [ModuleSpec.from_json(entry) for entry in document["modules"]]
+    except requests.RequestException as exc:
+        raise ModuleError(f"دریافت فهرست ماژول‌ها ناموفق بود: {exc}") from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ModuleError("فهرست دریافت‌شده معتبر نبود") from exc
+
+    if not modules:
+        raise ModuleError("فهرست دریافت‌شده خالی بود")
+
+    destination = modules_root() / "catalogue.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(response.text, encoding="utf-8")
+    reload_catalogue()
+    return len(modules)
+
+
+def _registry_headers() -> dict[str, str]:
+    """Auth for a private repository, when a token has been configured."""
+    if settings.module_registry_token:
+        return {"Authorization": f"token {settings.module_registry_token}"}
+    return {}
+
+
 def install(spec: ModuleSpec, source_url: str | None = None) -> None:
     """Fetch and unpack a module's model files.
 
@@ -168,7 +186,7 @@ def install(spec: ModuleSpec, source_url: str | None = None) -> None:
 
     try:
         if url.startswith(("http://", "https://")):
-            _download(url, archive)
+            _download(url, archive, headers=_registry_headers())
         else:
             local = Path(url)
             if not local.is_file():
@@ -197,8 +215,8 @@ def remove(spec: ModuleSpec) -> None:
         shutil.rmtree(pack_dir(spec.id), ignore_errors=True)
 
 
-def _download(url: str, destination: Path) -> None:
-    with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT) as response:
+def _download(url: str, destination: Path, headers: dict[str, str] | None = None) -> None:
+    with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT, headers=headers or {}) as response:
         response.raise_for_status()
 
         written = 0

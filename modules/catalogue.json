@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "updated": "2026-08-19",
+  "comment": "Source of truth for the analytics modules. The panel reads this file; see README.md before editing.",
+  "modules": [
+    {
+      "id": "intrusion",
+      "name": "ورود به منطقهٔ ممنوعه",
+      "description": "هر حرکتی در ناحیه و ساعت تعیین‌شده (انبار، پشت پیشخوان، درب اضطراری) را گزارش می‌کند.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": {
+        "min_area_percent": 1.5,
+        "zone": [],
+        "active_hours": [],
+        "warmup_frames": 30,
+        "cooldown_seconds": 60
+      }
+    },
+    {
+      "id": "crowd",
+      "name": "تجمع غیرعادی",
+      "description": "وقتی تعداد افراد در کادر از حد تعیین‌شده بیشتر شود و همان‌طور بماند، هشدار می‌دهد.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "max_people": 5, "sustain_seconds": 10, "cooldown_seconds": 120 }
+    },
+    {
+      "id": "fight",
+      "name": "درگیری و نزاع",
+      "description": "حرکت شدید و ممتد همراه با حضور چند نفر — برای لابی و راهرو. برای هشدار اشتباه کمتر، آستانه را بالا ببرید.",
+      "version": "1.0",
+      "cpu_cost": "moderate",
+      "settings": {
+        "motion_threshold": 0.045,
+        "min_people": 2,
+        "sustain_seconds": 3,
+        "warmup_frames": 30,
+        "cooldown_seconds": 120
+      }
+    },
+    {
+      "id": "running",
+      "name": "دویدن و فرار",
+      "description": "جابه‌جایی سریع یک نفر در کادر — برای راهروها و مسیر خروج. حرکت عادی عابر را نادیده می‌گیرد.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "speed_threshold": 0.22, "min_frames": 2, "max_step": 0.35, "cooldown_seconds": 90 }
+    },
+    {
+      "id": "loitering",
+      "name": "پرسه‌زنی",
+      "description": "فردی که بیش از حد معمول در یک نقطه می‌ماند را گزارش می‌کند.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "seconds": 180, "cooldown_seconds": 300 }
+    },
+    {
+      "id": "line_cross",
+      "name": "عبور از خط و شمارش",
+      "description": "عبور افراد از یک خط فرضی را با جهت (رفت/برگشت) ثبت می‌کند — برای درب و راهروی یک‌طرفه.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "line": [[0.0, 0.5], [1.0, 0.5]], "max_step": 0.6, "cooldown_seconds": 5 }
+    },
+    {
+      "id": "object_left",
+      "name": "جاگذاشتن یا برداشتن شیء",
+      "description": "شیئی که بی‌صاحب رها شده یا از جای همیشگی‌اش برداشته شده — برای چمدان رهاشده و وسایل لابی.",
+      "version": "1.0",
+      "cpu_cost": "moderate",
+      "settings": { "seconds": 45, "min_area_percent": 0.5, "cooldown_seconds": 180 }
+    },
+    {
+      "id": "tamper",
+      "name": "دستکاری یا پوشاندن دوربین",
+      "description": "پوشاندن لنز، چرخاندن دوربین یا اسپری‌کردنش — تصویر یک‌باره کاملاً عوض می‌شود و دیگر برنمی‌گردد.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "change_threshold": 0.7, "sustain_seconds": 5, "cooldown_seconds": 300 }
+    },
+    {
+      "id": "defocus",
+      "name": "تاری تصویر",
+      "description": "از فوکوس خارج شدن یا کثیف شدن لنز. کیفیت تصویر را می‌سنجد و افت ماندگار را گزارش می‌کند.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "sharpness_threshold": 45.0, "sustain_seconds": 30, "cooldown_seconds": 1800 }
+    },
+    {
+      "id": "blackout",
+      "name": "سیاهی یا کوری تصویر",
+      "description": "تصویر کاملاً سیاه، سفید یا یکنواخت شده — قطع مادون‌قرمز، نور مستقیم در لنز یا خرابی سنسور.",
+      "version": "1.0",
+      "cpu_cost": "light",
+      "settings": { "sustain_seconds": 20, "cooldown_seconds": 900 }
+    },
+    {
+      "id": "smoke_fire",
+      "name": "دود و آتش",
+      "description": "ترکیب رنگ شعله/دود با سوسوزدن مداوم. هشدار اولیه است و جای دتکتور دود استاندارد را نمی‌گیرد.",
+      "version": "1.0",
+      "cpu_cost": "moderate",
+      "settings": { "min_area_percent": 0.8, "sustain_seconds": 6, "warmup_frames": 30, "cooldown_seconds": 300 }
+    },
+    {
+      "id": "anpr",
+      "name": "پلاک‌خوان خودرو",
+      "description": "پلاک خودروهای ورودی/خروجی پارکینگ را می‌خواند و ثبت می‌کند. به بستهٔ مدل نیاز دارد.",
+      "version": "1.0",
+      "cpu_cost": "heavy",
+      "settings": { "min_confidence": 0.55, "cooldown_seconds": 20 },
+      "pack_entry": "plate_detector.onnx",
+      "pack_url": "https://raw.githubusercontent.com/kish210/hotel-faceid/master/modules/anpr/anpr-1.0.zip",
+      "pack_size_mb": 48.0
+    }
+  ]
+}

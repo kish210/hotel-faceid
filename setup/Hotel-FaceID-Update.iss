@@ -53,6 +53,8 @@ Source: "{#Root}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\todo.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\db\init\*"; DestDir: "{app}\db\init"; Flags: ignoreversion recursesubdirs
 Source: "{#Root}\setup\VERSION"; DestDir: "{app}"; Flags: ignoreversion
+; The analytics module catalogue the panel reads, plus any pack shipped with it.
+Source: "{#Root}\modules\*"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 Source: "{#Root}\services\api\requirements.txt"; DestDir: "{app}\services\api"; Flags: ignoreversion
 Source: "{#Root}\services\api\app\*.py"; DestDir: "{app}\services\api\app"; Flags: ignoreversion
