@@ -10,7 +10,7 @@
 $ErrorActionPreference = "Stop"
 $InstallDir = Split-Path -Parent $PSScriptRoot
 $versionLine = Get-Content -LiteralPath (Join-Path $InstallDir "VERSION") -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $versionLine) { $versionLine = "0.9.0" }
+if (-not $versionLine) { $versionLine = "1.1.0" }
 $version = $versionLine
 
 Write-Host "============================================================" -ForegroundColor Cyan

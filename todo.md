@@ -160,14 +160,14 @@
 
 ---
 
-## انتشار ۰.۹.۰ — بسته نصب نسخه‌دار — `[x]` انجام شد
+## انتشار ۱.۱.۰ — بسته نصب نسخه‌دار (بدون Docker) — `[x]` انجام شد
 
 - [x] ساخت بسته نصب ویندوزی با **Inno Setup** (`setup/Hotel-FaceID.iss`)
-- [x] فایل نسخه (`setup/VERSION` = 0.9.0)
+- [x] فایل نسخه (`setup/VERSION` = 1.1.0)
 - [x] اسکریپت نصب PowerShell (`setup/scripts/install.ps1`): بررسی Python،
       ساخت محیط مجازی و نصب وابستگی‌ها، build پنل، ساخت `.env` امن با رمز
       تصادفی و اجرای هر دو سرویس — بدون نیاز به Docker
 - [x] اسکریپت‌های کمکی: `start.ps1` / `stop.ps1` / `status.ps1` / `logs.ps1` /
       `debug.ps1` (جمع‌آوری لاگ برای عیب‌یابی)
 - [x] سورس کامل سامانه داخل بسته نصب کپی می‌شود تا امکان debug مستقیم باشد
-- [x] خروجی: `setup/dist/Hotel-FaceID-Setup-0.9.0.exe`
+- [x] خروجی: `setup/dist/Hotel-FaceID-Setup-1.1.0.exe` (انتشار GitHub: `v1.1.0`)
