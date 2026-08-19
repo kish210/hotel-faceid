@@ -7,6 +7,7 @@ attempts rather than one lookup:
     Hikvision  GET /ISAPI/System/deviceInfo          (XML,  digest)
     Dahua      GET /cgi-bin/magicBox.cgi?action=…    (k=v,  digest)
     Axis       GET /axis-cgi/basicdeviceinfo.cgi     (JSON, digest)  → param.cgi
+    Foscam     GET /cgi-bin/CGIProxy.fcgi            (XML,  credentials in query)
     anything   ONVIF GetDeviceInformation            (SOAP, WS-Security)
 
 The first vendor that answers wins; ONVIF is the catch-all so an unknown brand
@@ -19,6 +20,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
@@ -48,7 +50,7 @@ class Device:
 def probe(host: str, port: int, username: str | None, password: str | None) -> CameraProbeResult:
     """Identify the device at host:port. Never raises — failures come back as
     `detected=False` with a human-readable reason."""
-    probes = (_probe_hikvision, _probe_dahua, _probe_axis, _probe_onvif)
+    probes = (_probe_hikvision, _probe_dahua, _probe_axis, _probe_foscam, _probe_onvif)
 
     unreachable = True
     for attempt in probes:
@@ -89,6 +91,7 @@ def default_rtsp_path(brand: CameraBrand) -> str | None:
         CameraBrand.hikvision: "/Streaming/Channels/101",
         CameraBrand.dahua: "/cam/realmonitor?channel=1&subtype=0",
         CameraBrand.axis: "/axis-media/media.amp",
+        CameraBrand.foscam: "/videoMain",
     }.get(brand)
 
 
@@ -179,6 +182,26 @@ def _probe_axis(host: str, port: int, username: str | None, password: str | None
     )
 
 
+def _probe_foscam(host: str, port: int, username: str | None, password: str | None) -> Device | None:
+    """Foscam's CGIProxy takes the credentials as query parameters."""
+    user = quote(username or "", safe="")
+    secret = quote(password or "", safe="")
+    url = (
+        f"http://{host}:{port}/cgi-bin/CGIProxy.fcgi"
+        f"?cmd=getDevInfo&usr={user}&pwd={secret}"
+    )
+    response = requests.get(url, timeout=TIMEOUT)
+    if response.status_code != 200 or "<productName>" not in response.text:
+        return None
+
+    return Device(
+        brand=CameraBrand.foscam,
+        model=_xml(response.text, "productName"),
+        firmware=_xml(response.text, "firmwareVer"),
+        serial_number=_xml(response.text, "serialNo"),
+    )
+
+
 def _probe_onvif(host: str, port: int, username: str | None, password: str | None) -> Device | None:
     """Brand-neutral fallback: ONVIF GetDeviceInformation.
 
@@ -208,6 +231,7 @@ def _probe_onvif(host: str, port: int, username: str | None, password: str | Non
         ("hikvision", CameraBrand.hikvision),
         ("dahua", CameraBrand.dahua),
         ("axis", CameraBrand.axis),
+        ("foscam", CameraBrand.foscam),
     ):
         if known in manufacturer:
             brand = value

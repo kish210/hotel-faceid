@@ -9,7 +9,18 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import SessionLocal, init_db
-from .routers import audit, auth, cameras, dashboard, events, faces, persons, users
+from .routers import (
+    alerts,
+    analytics,
+    audit,
+    auth,
+    cameras,
+    dashboard,
+    events,
+    faces,
+    persons,
+    users,
+)
 from .services import report_email, stays, storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -65,6 +76,8 @@ app.include_router(events.router)
 app.include_router(cameras.router)
 app.include_router(dashboard.router)
 app.include_router(faces.router)
+app.include_router(alerts.router)
+app.include_router(analytics.router)
 app.include_router(users.router)
 app.include_router(audit.router)
 

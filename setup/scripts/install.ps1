@@ -17,7 +17,7 @@ $InstallDir = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "common.ps1")
 
 $versionLine = Get-Content -LiteralPath (Join-Path $InstallDir "VERSION") -ErrorAction SilentlyContinue | Select-Object -First 1
-$version = if ($versionLine) { $versionLine } else { "1.2.0" }
+$version = if ($versionLine) { $versionLine } else { "1.3.0" }
 
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Hotel Face-ID v$version — راه‌اندازی سامانه" -ForegroundColor Cyan

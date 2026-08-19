@@ -68,6 +68,15 @@ export const api = {
   deleteCamera: (id) => request(`/api/cameras/${id}`, { method: "DELETE" }),
   probeCamera: (body) => request("/api/cameras/probe", { method: "POST", body: JSON.stringify(body) }),
 
+  alerts: (params = {}) => request(`/api/alerts?${new URLSearchParams(params)}`),
+  acknowledgeAlert: (id) => request(`/api/alerts/${id}/acknowledge`, { method: "POST" }),
+  deleteAlert: (id) => request(`/api/alerts/${id}`, { method: "DELETE" }),
+
+  analyticsModules: () => request("/api/analytics/modules"),
+  installModule: (id, body = {}) =>
+    request(`/api/analytics/modules/${id}/install`, { method: "POST", body: JSON.stringify(body) }),
+  removeModule: (id) => request(`/api/analytics/modules/${id}`, { method: "DELETE" }),
+
   dailyReport: (start, end) =>
     request(`/api/reports/daily?${new URLSearchParams({ ...(start && { start }), ...(end && { end }) })}`),
   topGuests: (limit = 20) => request(`/api/reports/top-guests?limit=${limit}`),

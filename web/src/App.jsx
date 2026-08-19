@@ -7,6 +7,8 @@ import {
   FileBarChart,
   UserCog,
   ScrollText,
+  ShieldAlert,
+  Boxes,
   LogOut,
   Hotel,
 } from "lucide-react";
@@ -23,6 +25,8 @@ const NAV = [
   { to: "/guests", label: "مهمانان", icon: Users },
   { to: "/face-search", label: "جست‌وجوی تصویری", icon: Search },
   { to: "/cameras", label: "دوربین‌ها", icon: Camera },
+  { to: "/alerts", label: "هشدارها", icon: ShieldAlert },
+  { to: "/modules", label: "ماژول‌های تحلیل", icon: Boxes },
   { to: "/reports", label: "گزارش‌ها", icon: FileBarChart },
   { to: "/users", label: "کاربران", icon: UserCog },
   { to: "/audit", label: "گزارش عملیات", icon: ScrollText },

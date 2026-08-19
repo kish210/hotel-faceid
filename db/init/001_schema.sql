@@ -15,6 +15,8 @@ CREATE TABLE persons (
     gender_votes    JSONB,                      -- {"male": 12, "female": 3}
     gender_manual   BOOLEAN      NOT NULL DEFAULT FALSE,  -- operator override
     age_estimate    INTEGER,                    -- mean of the estimates seen
+    alarm_enabled   BOOLEAN      NOT NULL DEFAULT FALSE,  -- watchlist
+    alarm_note      TEXT,
     room_number     TEXT,
     phone           TEXT,
     reference_image TEXT,                       -- relative path of the face crop
@@ -45,7 +47,7 @@ CREATE TABLE face_embeddings (
 CREATE INDEX idx_face_embeddings_person ON face_embeddings(person_id);
 
 -- ---------------------------------------------------------------- cameras
-CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'axis', 'onvif', 'generic');
+CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'axis', 'foscam', 'onvif', 'generic');
 CREATE TYPE camera_purpose AS ENUM ('entry', 'exit', 'bidirectional', 'monitor');
 
 CREATE TABLE cameras (
@@ -63,6 +65,8 @@ CREATE TABLE cameras (
     username       TEXT,
     password_enc   TEXT,                          -- encrypted at rest
     use_device_face_engine BOOLEAN NOT NULL DEFAULT FALSE,
+    analytics      JSONB,                         -- enabled analytics module ids
+    analytics_config JSONB,                       -- per-module settings
     enabled        BOOLEAN NOT NULL DEFAULT TRUE,
     online         BOOLEAN NOT NULL DEFAULT FALSE,
     last_seen_at   TIMESTAMPTZ,
@@ -87,6 +91,29 @@ CREATE TABLE events (
 CREATE INDEX idx_events_person_time ON events(person_id, occurred_at DESC);
 CREATE INDEX idx_events_time        ON events(occurred_at DESC);
 CREATE INDEX idx_events_direction   ON events(direction, occurred_at DESC);
+
+-- ----------------------------------------------------------------- alerts
+-- Raised by the analytics modules: a fight, an intrusion, a plate read.
+CREATE TYPE alert_severity AS ENUM ('info', 'warning', 'critical');
+
+CREATE TABLE alerts (
+    id              BIGSERIAL PRIMARY KEY,
+    camera_id       UUID REFERENCES cameras(id) ON DELETE SET NULL,
+    module          TEXT NOT NULL,
+    severity        alert_severity NOT NULL DEFAULT 'warning',
+    title           TEXT NOT NULL,
+    detail          JSONB,
+    image_path      TEXT,
+    person_id       UUID REFERENCES persons(id) ON DELETE SET NULL,
+    occurred_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acknowledged_at TIMESTAMPTZ,
+    acknowledged_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_alerts_time   ON alerts(occurred_at DESC);
+CREATE INDEX idx_alerts_module ON alerts(module, occurred_at DESC);
+CREATE INDEX idx_alerts_open   ON alerts(occurred_at DESC) WHERE acknowledged_at IS NULL;
 
 -- ------------------------------------------------------------------ stays
 -- One row per continuous visit. nights is recomputed on each check-out.

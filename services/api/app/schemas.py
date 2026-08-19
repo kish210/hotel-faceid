@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import (
+    AlertSeverity,
     CameraBrand,
     CameraPurpose,
     EventDirection,
@@ -38,6 +39,8 @@ class PersonOut(ORMModel):
     gender: PersonGender = PersonGender.unknown
     gender_manual: bool = False
     age_estimate: int | None = None
+    alarm_enabled: bool = False
+    alarm_note: str | None = None
     room_number: str | None
     phone: str | None
     reference_image: str | None
@@ -51,6 +54,10 @@ class PersonUpdate(BaseModel):
     gender: PersonGender | None = Field(
         default=None, description="Operator override; stops automatic gender updates"
     )
+    alarm_enabled: bool | None = Field(
+        default=None, description="Put this person on the watchlist"
+    )
+    alarm_note: str | None = None
     room_number: str | None = None
     phone: str | None = None
 
@@ -110,6 +117,9 @@ class RecognizeResponse(BaseModel):
     direction: EventDirection | None
     debounced: bool = False
     gender: PersonGender = PersonGender.unknown
+    alarm: bool = Field(default=False, description="This person is on the watchlist")
+    alarm_person_name: str | None = None
+    alarm_note: str | None = None
 
 
 # ------------------------------------------------------------------- stay
@@ -150,7 +160,19 @@ class CameraBase(BaseModel):
     rtsp_url: str | None = None
     username: str | None = None
     use_device_face_engine: bool = False
+    analytics: list[str] = Field(
+        default_factory=list, description="Ids of the analytics modules to run on this camera"
+    )
+    analytics_config: dict = Field(default_factory=dict, description="Per-module settings")
     enabled: bool = True
+
+    # Both columns are NULL on rows written before analytics existed.
+    @field_validator("analytics", "analytics_config", mode="before")
+    @classmethod
+    def _null_is_empty(cls, value, info):
+        if value is None:
+            return [] if info.field_name == "analytics" else {}
+        return value
 
 
 class CameraCreate(CameraBase):
@@ -164,6 +186,8 @@ class CameraCreate(CameraBase):
 class CameraUpdate(BaseModel):
     name: str | None = None
     brand: CameraBrand | None = None
+    analytics: list[str] | None = None
+    analytics_config: dict | None = None
     model: str | None = None
     firmware: str | None = None
     serial_number: str | None = None
@@ -213,6 +237,59 @@ class CameraStreamConfig(CameraOut):
     """Same as CameraOut but carries the decrypted password — service auth only."""
 
     password: str | None = None
+
+
+# ------------------------------------------------- analytics alerts
+class AlertOut(ORMModel):
+    id: int
+    camera_id: uuid.UUID | None
+    camera_name: str | None = None
+    module: str
+    module_name: str | None = Field(default=None, description="Display name, resolved by the API")
+    severity: AlertSeverity
+    title: str
+    detail: dict | None
+    image_path: str | None
+    person_id: uuid.UUID | None
+    occurred_at: datetime
+    acknowledged_at: datetime | None
+
+
+class AlertCreate(BaseModel):
+    """Posted by the face-service when a module fires."""
+
+    camera_id: uuid.UUID | None = None
+    module: str
+    severity: AlertSeverity = AlertSeverity.warning
+    title: str
+    detail: dict | None = None
+    image_base64: str | None = Field(default=None, description="JPEG snapshot, base64")
+    person_id: uuid.UUID | None = None
+    occurred_at: datetime | None = None
+
+
+# ------------------------------------------------- analytics modules
+class AnalyticsModuleOut(BaseModel):
+    """One image-processing capability that can be switched on per camera."""
+
+    id: str
+    name: str
+    description: str
+    version: str
+    installed: bool
+    # False for modules whose code ships with the app and need no model pack.
+    needs_pack: bool = False
+    pack_size_mb: float | None = None
+    cpu_cost: str = Field(description="light | moderate | heavy — guidance for CPU-only servers")
+    cameras: int = Field(default=0, description="How many cameras currently run it")
+    settings: dict = Field(default_factory=dict, description="Tunables and their defaults")
+
+
+class ModuleInstallRequest(BaseModel):
+    source_url: str | None = Field(
+        default=None,
+        description="Override the download location, or point at a local file for offline installs",
+    )
 
 
 # -------------------------------------------------------------- dashboard

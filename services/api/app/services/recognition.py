@@ -109,6 +109,17 @@ def update_gender(person: Person, gender: PersonGender | None, age: int | None) 
         person.gender = PersonGender(winner)
 
 
+def _alarm_fields(person: Person | None) -> dict:
+    """Watchlist part of the response, which the panel turns into an alarm."""
+    if person is None or not person.alarm_enabled:
+        return {}
+    return {
+        "alarm": True,
+        "alarm_person_name": person.display_name,
+        "alarm_note": person.alarm_note,
+    }
+
+
 def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeResponse:
     at = payload.detected_at or datetime.now().astimezone()
     camera = db.get(Camera, payload.camera_id) if payload.camera_id else None
@@ -153,6 +164,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
             direction=None,
             debounced=True,
             gender=person.gender,
+            **_alarm_fields(person),
         )
 
     direction = resolve_direction(db, person.id, camera, payload.direction_hint)
@@ -182,6 +194,7 @@ def process_detection(db: Session, payload: RecognizeRequest) -> RecognizeRespon
         direction=direction,
         debounced=False,
         gender=person.gender,
+        **_alarm_fields(person),
     )
 
 
@@ -226,6 +239,10 @@ def merge_persons(db: Session, source_id: uuid.UUID, target_id: uuid.UUID) -> Pe
     target.display_name = target.display_name or source.display_name
     target.room_number = target.room_number or source.room_number
     target.phone = target.phone or source.phone
+    # A watchlist flag on either identity must survive the merge — losing it
+    # would silently stop the alarm for someone deliberately flagged.
+    target.alarm_enabled = target.alarm_enabled or source.alarm_enabled
+    target.alarm_note = target.alarm_note or source.alarm_note
     _merge_gender(source, target)
 
     source.merged_into = target_id

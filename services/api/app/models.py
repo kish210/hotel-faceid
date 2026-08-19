@@ -5,7 +5,6 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
-    DateTime,
     Enum,
     Float,
     ForeignKey,
@@ -13,12 +12,11 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
-    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .db import Base
+from .db import GUID, Base, UTCDateTime
 
 
 class PersonRole(str, enum.Enum):
@@ -32,6 +30,7 @@ class CameraBrand(str, enum.Enum):
     dahua = "dahua"
     hikvision = "hikvision"
     axis = "axis"
+    foscam = "foscam"
     onvif = "onvif"
     generic = "generic"
 
@@ -62,7 +61,7 @@ class UserRole(str, enum.Enum):
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
-    return mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    return mapped_column(GUID, primary_key=True, default=uuid.uuid4)
 
 
 def _autoincrement_pk() -> Mapped[int]:
@@ -97,14 +96,17 @@ class Person(Base):
     # Set once an operator picks a gender by hand — detections stop overriding it.
     gender_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     age_estimate: Mapped[int | None] = mapped_column(Integer)
+    # Watchlist: raise an alarm whenever this person is recognised again.
+    alarm_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    alarm_note: Mapped[str | None] = mapped_column(Text)
     room_number: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(Text)
     reference_image: Mapped[str | None] = mapped_column(Text)
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    merged_into: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("persons.id"))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+    merged_into: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("persons.id"))
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     embeddings: Mapped[list["FaceEmbedding"]] = relationship(
         back_populates="person", cascade="all, delete-orphan"
@@ -118,12 +120,12 @@ class FaceEmbedding(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     person_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("persons.id", ondelete="CASCADE"), index=True
+        GUID, ForeignKey("persons.id", ondelete="CASCADE"), index=True
     )
     embedding: Mapped[list[float]] = mapped_column(JSON)
     image_path: Mapped[str | None] = mapped_column(Text)
     quality: Mapped[float | None] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     person: Mapped[Person] = relationship(back_populates="embeddings")
 
@@ -148,10 +150,15 @@ class Camera(Base):
     username: Mapped[str | None] = mapped_column(Text)
     password_enc: Mapped[str | None] = mapped_column(Text)
     use_device_face_engine: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Ids of the analytics modules running on this camera, e.g.
+    # ["intrusion", "fight"]. Empty means face recognition only.
+    analytics: Mapped[list | None] = mapped_column(JSON)
+    # Per-camera module settings, keyed by module id (sensitivity, zone…).
+    analytics_config: Mapped[dict | None] = mapped_column(JSON)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     online: Mapped[bool] = mapped_column(Boolean, default=False)
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
 
 class Event(Base):
@@ -159,17 +166,52 @@ class Event(Base):
 
     id: Mapped[int] = _autoincrement_pk()
     person_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("persons.id", ondelete="CASCADE"), index=True
+        GUID, ForeignKey("persons.id", ondelete="CASCADE"), index=True
     )
-    camera_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("cameras.id"))
+    camera_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("cameras.id"))
     direction: Mapped[EventDirection] = mapped_column(_enum(EventDirection, "event_direction"))
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     confidence: Mapped[float | None] = mapped_column(Float)
     image_path: Mapped[str | None] = mapped_column(Text)
     manual: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     person: Mapped[Person] = relationship(back_populates="events")
+    camera: Mapped[Camera | None] = relationship()
+
+
+class AlertSeverity(str, enum.Enum):
+    info = "info"
+    warning = "warning"
+    critical = "critical"
+
+
+class Alert(Base):
+    """Something an analytics module noticed on a camera.
+
+    Kept apart from `events`: an event is a person crossing the door, an alert
+    is a situation somebody should look at — a fight, a plate, an intrusion.
+    """
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = _autoincrement_pk()
+    camera_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("cameras.id"), index=True)
+    # Module that raised it: "fight", "anpr", "intrusion"…
+    module: Mapped[str] = mapped_column(Text, index=True)
+    severity: Mapped[AlertSeverity] = mapped_column(
+        _enum(AlertSeverity, "alert_severity"), default=AlertSeverity.warning
+    )
+    title: Mapped[str] = mapped_column(Text)
+    # Module-specific payload: plate text, person count, zone name…
+    detail: Mapped[dict | None] = mapped_column(JSON)
+    image_path: Mapped[str | None] = mapped_column(Text)
+    person_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("persons.id", ondelete="SET NULL"))
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+
     camera: Mapped[Camera | None] = relationship()
 
 
@@ -178,14 +220,14 @@ class Stay(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     person_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("persons.id", ondelete="CASCADE"), index=True
+        GUID, ForeignKey("persons.id", ondelete="CASCADE"), index=True
     )
-    checkin_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    checkout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checkin_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    checkout_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     nights: Mapped[int] = mapped_column(Integer, default=0)
     room_number: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     person: Mapped[Person] = relationship(back_populates="stays")
 
@@ -199,17 +241,17 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text)
     role: Mapped[UserRole] = mapped_column(_enum(UserRole, "user_role"), default=UserRole.reception)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = _autoincrement_pk()
-    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("users.id"))
     action: Mapped[str] = mapped_column(Text)
     entity: Mapped[str | None] = mapped_column(Text)
     entity_id: Mapped[str | None] = mapped_column(Text)
     detail: Mapped[dict | None] = mapped_column(JSON)
     ip_address: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())

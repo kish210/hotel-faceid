@@ -35,8 +35,21 @@ export const BRAND_LABELS = {
   hikvision: "Hikvision",
   dahua: "Dahua",
   axis: "Axis",
+  foscam: "Foscam",
   onvif: "ONVIF (عمومی)",
   generic: "سایر",
+};
+
+export const SEVERITY_LABELS = {
+  info: "اطلاع",
+  warning: "هشدار",
+  critical: "بحرانی",
+};
+
+export const CPU_COST_LABELS = {
+  light: "سبک",
+  moderate: "متوسط",
+  heavy: "سنگین",
 };
 
 export const PURPOSE_LABELS = {

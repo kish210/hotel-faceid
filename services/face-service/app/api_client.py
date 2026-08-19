@@ -58,6 +58,32 @@ class ApiClient:
             log.warning("Failed to submit detection for camera %s", camera_id, exc_info=True)
             return None
 
+    def submit_alert(
+        self,
+        camera_id: str,
+        module: str,
+        title: str,
+        severity: str,
+        detail: dict | None = None,
+        image: bytes | None = None,
+    ) -> None:
+        payload = {
+            "camera_id": camera_id,
+            "module": module,
+            "title": title,
+            "severity": severity,
+            "detail": detail or {},
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if image:
+            payload["image_base64"] = base64.b64encode(image).decode()
+
+        try:
+            response = self.session.post(f"{self.base}/api/alerts", json=payload, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException:
+            log.warning("Failed to submit %s alert for camera %s", module, camera_id, exc_info=True)
+
     def heartbeat(self, camera_id: str, online: bool) -> None:
         try:
             self.session.post(

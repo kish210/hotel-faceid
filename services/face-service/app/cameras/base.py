@@ -12,7 +12,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import requests
@@ -34,6 +34,8 @@ class CameraConfig:
     rtsp_url: str | None = None
     use_device_face_engine: bool = False
     location: str | None = None
+    analytics: list[str] = field(default_factory=list)
+    analytics_config: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> CameraConfig:
@@ -49,6 +51,8 @@ class CameraConfig:
             rtsp_url=data.get("rtsp_url"),
             use_device_face_engine=data.get("use_device_face_engine", False),
             location=data.get("location"),
+            analytics=data.get("analytics") or [],
+            analytics_config=data.get("analytics_config") or {},
         )
 
 

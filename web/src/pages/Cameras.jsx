@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Video, VideoOff, Camera, Pencil, ScanSearch, Loader2 } from "lucide-react";
 import { api, connectLiveUpdates } from "../api.js";
-import { BRAND_LABELS, PURPOSE_LABELS, formatDateTime } from "../format.js";
+import { BRAND_LABELS, CPU_COST_LABELS, PURPOSE_LABELS, formatDateTime } from "../format.js";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import {
 const EMPTY = {
   name: "",
   brand: "onvif",
+  analytics: [],
   model: "",
   firmware: "",
   serial_number: "",
@@ -62,6 +63,7 @@ export default function Cameras() {
   const [error, setError] = useState(null);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState(null);
+  const [modules, setModules] = useState([]);
 
   async function load() {
     try {
@@ -73,6 +75,7 @@ export default function Cameras() {
 
   useEffect(() => {
     load();
+    api.analyticsModules().then(setModules).catch(() => setModules([]));
     const timer = setInterval(load, 30000);
     const disconnect = connectLiveUpdates((message) => {
       if (message.type === "camera-status") {
@@ -265,6 +268,52 @@ export default function Cameras() {
               </div>
             )}
 
+            <div className="grid gap-2">
+              <Label>پردازش تصویر روی این دوربین</Label>
+              <p className="text-muted-foreground text-xs">
+                علاوه بر تشخیص چهره، این موارد روی تصویر همین دوربین بررسی می‌شوند.
+                هر ماژول بار پردازشی دارد؛ روی یک سرور معمولی دو تا سه مورد برای هر
+                دوربین منطقی است.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {modules.map((module) => {
+                  const checked = (form.analytics || []).includes(module.id);
+                  const blocked = !module.installed;
+                  return (
+                    <label
+                      key={module.id}
+                      className={`border-input flex items-start gap-2 rounded-md border p-2 text-sm ${
+                        blocked ? "opacity-60" : "cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={checked}
+                        disabled={blocked}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            analytics: e.target.checked
+                              ? [...(form.analytics || []), module.id]
+                              : (form.analytics || []).filter((id) => id !== module.id),
+                          })
+                        }
+                      />
+                      <span>
+                        <span className="font-medium">{module.name}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {blocked
+                            ? "ابتدا از صفحهٔ «ماژول‌های تحلیل» نصبش کنید"
+                            : `بار پردازشی: ${CPU_COST_LABELS[module.cpu_cost] || module.cpu_cost}`}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <Switch
                 id="device-engine"
@@ -322,7 +371,14 @@ export default function Cameras() {
                       <div className="text-muted-foreground text-xs" dir="ltr">{camera.model}</div>
                     )}
                   </TableCell>
-                  <TableCell>{PURPOSE_LABELS[camera.purpose] || camera.purpose}</TableCell>
+                  <TableCell>
+                    {PURPOSE_LABELS[camera.purpose] || camera.purpose}
+                    {camera.analytics?.length > 0 && (
+                      <div className="text-muted-foreground mt-1 text-xs">
+                        + {camera.analytics.length} ماژول تحلیل
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>{camera.location || "—"}</TableCell>
                   <TableCell className="font-mono text-xs" dir="ltr">{camera.host}:{camera.port}</TableCell>
                   <TableCell>

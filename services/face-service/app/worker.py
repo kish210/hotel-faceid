@@ -13,6 +13,7 @@ import time
 import cv2
 import numpy as np
 
+from .analytics import FrameContext, build_pipeline
 from .api_client import ApiClient
 from .cameras.base import BaseCamera
 from .config import settings
@@ -29,6 +30,23 @@ class CameraWorker(threading.Thread):
         self.api = api
         self._stop = threading.Event()
         self._last_heartbeat = 0.0
+
+        self.analytics = (
+            build_pipeline(
+                camera.config.name,
+                camera.config.analytics,
+                camera.config.analytics_config,
+            )
+            if settings.analytics_enabled
+            else []
+        )
+        if self.analytics:
+            log.info(
+                "Analytics on %s: %s",
+                camera.config.name,
+                ", ".join(module.id for module in self.analytics),
+            )
+        self._analytics_tick = 0
 
     def stop(self) -> None:
         self._stop.set()
@@ -78,7 +96,10 @@ class CameraWorker(threading.Thread):
             capture.release()
 
     def _process_frame(self, frame: np.ndarray) -> None:
-        for face in self.engine.detect(frame):
+        faces = self.engine.detect(frame)
+        self._run_analytics(frame, faces)
+
+        for face in faces:
             self.api.submit_detection(
                 camera_id=self.camera.config.id,
                 embedding=face.embedding,
@@ -89,6 +110,42 @@ class CameraWorker(threading.Thread):
                 gender=face.gender,
                 age=face.age,
             )
+
+    # ---------------------------------------------------------- analytics
+    def _run_analytics(self, frame: np.ndarray, faces: list) -> None:
+        """Feed the frame to this camera's modules.
+
+        Analytics runs on a fraction of the frames recognition sees: a fight
+        or an abandoned bag lasts seconds, so a lower rate loses nothing, and
+        it keeps identification — the primary job — from being starved.
+        """
+        if not self.analytics:
+            return
+
+        self._analytics_tick += 1
+        if self._analytics_tick % max(settings.analytics_frame_divisor, 1):
+            return
+
+        context = FrameContext(frame=frame, faces=[face.bbox for face in faces])
+
+        for module in self.analytics:
+            try:
+                alert = module.process(context)
+            except Exception:
+                log.exception(
+                    "Analytics module %s failed on %s", module.id, self.camera.config.name
+                )
+                continue
+
+            if alert is not None:
+                self.api.submit_alert(
+                    camera_id=self.camera.config.id,
+                    module=alert.module,
+                    title=alert.title,
+                    severity=alert.severity,
+                    detail=alert.detail,
+                    image=encode_jpeg(alert.frame) if alert.frame is not None else None,
+                )
 
     # -------------------------------------------------------- edge-event path
     def _run_device_events(self) -> None:

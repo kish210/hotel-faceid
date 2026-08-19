@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     # installation, then fall back to InsightFace's own ~/.insightface".
     model_root: str = ""
 
+    # Analytics modules (fight, intrusion, plate reading…)
+    analytics_enabled: bool = True
+    # Analytics looks at one frame every N sampled frames. Face recognition
+    # gets every sampled frame; analytics is the cheaper-but-second job.
+    analytics_frame_divisor: int = 3
+    # Where downloaded model packs live, matching the API's data/modules.
+    module_root: str = "./data/modules"
+
     # Stream handling
     reconnect_delay_seconds: int = 5
     heartbeat_interval_seconds: int = 30

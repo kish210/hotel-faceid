@@ -1,26 +1,35 @@
-﻿; Hotel Face-ID installer script
-; Requires Inno Setup 6.3+
+; Hotel Face-ID — update package
+;
+; Upgrades an installation that is already on the machine. It carries the same
+; payload as the full installer (runtime + models) because the release it
+; replaces may be missing packages this version needs, and a hotel machine is
+; not a place to debug a half-updated Python environment.
+;
+; What makes this an *update* rather than a reinstall is where it lands and
+; what it leaves alone: it finds the existing folder, keeps data\ and .env,
+; and hands over to scripts\update.ps1 for the migration.
 
 #define MyAppName "Hotel Face-ID"
 #define MyAppVersion "1.3.0"
 #define MyAppPublisher "Hotel Face-ID"
-#define MyAppExeName "start-install.ps1"
 #define Root "D:\code\ocr"
-; Prebuilt Python runtime + InsightFace models, assembled by setup\build.ps1.
 #define Payload Root + "\setup\payload"
 
 [Setup]
+; Same AppId as the full installer, so Windows treats this as the same product.
 AppId={{7F3C2D18-5E1A-4B6F-9C21-4D3E8A2B6F11}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} v{#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName=C:\HotelFaceID
-DefaultGroupName={#MyAppName}
+; Points at whatever installation is already on the machine. Inno lets /DIR=
+; override this, which is what keeps unattended upgrades scriptable.
+DefaultDirName={code:ExistingInstallation}
 DisableProgramGroupPage=yes
+DisableDirPage=no
 PrivilegesRequired=lowest
 OutputDir={#Root}\setup\dist
-OutputBaseFilename=Hotel-FaceID-Setup-{#MyAppVersion}
+OutputBaseFilename=Hotel-FaceID-Update-{#MyAppVersion}
 SetupIconFile={#Root}\setup\app.ico
 Compression=lzma2
 SolidCompression=yes
@@ -28,47 +37,41 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\app.ico
+; The services are stopped by update.ps1, which knows how to find them.
 CloseApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "ساخت میان‌بر روی دسکتاپ"; GroupDescription: "میان‌برها:"
-Name: "autostart"; Description: "اجرای خودکار سامانه هنگام روشن شدن ویندوز"; GroupDescription: "میان‌برها:"
+[Messages]
+WelcomeLabel2=این بسته سامانهٔ نصب‌شده را به نسخهٔ {#MyAppVersion} به‌روز می‌کند.%n%nاطلاعات مهمانان، تصاویر و تنظیمات شما حفظ می‌شود و پیش از تغییر، از پایگاه داده نسخهٔ پشتیبان گرفته می‌شود.%n%nمسیر نصب فعلی را در صفحهٔ بعد تأیید کنید.
 
 [Files]
-; ---- source of every service (kept on disk for debugging) ----
+; ---- application code ----
 Source: "{#Root}\.env.example"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\todo.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Root}\db\init\*"; DestDir: "{app}\db\init"; Flags: ignoreversion recursesubdirs
 Source: "{#Root}\setup\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
-; ---- api ----
 Source: "{#Root}\services\api\requirements.txt"; DestDir: "{app}\services\api"; Flags: ignoreversion
 Source: "{#Root}\services\api\app\*.py"; DestDir: "{app}\services\api\app"; Flags: ignoreversion
 Source: "{#Root}\services\api\app\routers\*.py"; DestDir: "{app}\services\api\app\routers"; Flags: ignoreversion
 Source: "{#Root}\services\api\app\services\*.py"; DestDir: "{app}\services\api\app\services"; Flags: ignoreversion
 Source: "{#Root}\services\api\fonts\*"; DestDir: "{app}\services\api\fonts"; Flags: ignoreversion
 
-; ---- face-service ----
 Source: "{#Root}\services\face-service\requirements.txt"; DestDir: "{app}\services\face-service"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\app\*.py"; DestDir: "{app}\services\face-service\app"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\app\cameras\*.py"; DestDir: "{app}\services\face-service\app\cameras"; Flags: ignoreversion
+Source: "{#Root}\services\face-service\app\analytics\*.py"; DestDir: "{app}\services\face-service\app\analytics"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\tests\*.py"; DestDir: "{app}\services\face-service\tests"; Flags: ignoreversion
 
-; ---- bundled Python runtime and recognition models ----
-; These two are what make the package self-contained: the target machine needs
-; no Python, no pip, no Node and no internet connection.
+; ---- runtime and models ----
 Source: "{#Payload}\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Payload}\models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; ---- web: the built panel, served by the API itself ----
-; Shipping dist\ is what frees the target machine from needing Node.js.
-Source: "{#Root}\web\dist\*"; DestDir: "{app}\web\dist"; Flags: ignoreversion recursesubdirs
-
-; ---- web sources (kept on disk so the panel can be rebuilt/debugged) ----
+; ---- panel ----
+Source: "{#Root}\web\dist\*"; DestDir: "{app}\web\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\web\package.json"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\package-lock.json"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#Root}\web\vite.config.js"; DestDir: "{app}\web"; Flags: ignoreversion
@@ -85,40 +88,58 @@ Source: "{#Root}\web\src\components\*.jsx"; DestDir: "{app}\web\src\components";
 Source: "{#Root}\web\src\components\ui\*.jsx"; DestDir: "{app}\web\src\components\ui"; Flags: ignoreversion
 Source: "{#Root}\web\src\pages\*.jsx"; DestDir: "{app}\web\src\pages"; Flags: ignoreversion
 
-; ---- installer scripts + icon ----
+; ---- scripts + icon ----
 Source: "{#Root}\setup\scripts\*.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#Root}\setup\scripts\*.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#Root}\setup\README.md"; DestDir: "{app}\scripts"; DestName: "README-install.md"; Flags: ignoreversion
 Source: "{#Root}\setup\app.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; The everyday button: starts the system if it is not running and opens the panel.
 Name: "{autoprograms}\{#MyAppName}\شروع سامانه"; Filename: "{app}\scripts\run-start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\توقف سامانه"; Filename: "{app}\scripts\run-stop.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\وضعیت سامانه"; Filename: "{app}\scripts\run-status.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\گزارش خطا برای پشتیبانی"; Filename: "{app}\scripts\run-debug.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{autoprograms}\{#MyAppName}\راهنما"; Filename: "{app}\scripts\README-install.md"
-Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\scripts\run-start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"; Tasks: desktopicon
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\scripts\run-start-quiet.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"; Tasks: autostart
 
 [Run]
-Filename: "{app}\scripts\run-install.cmd"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent; Description: "راه‌اندازی و اجرای سامانه"
-
-[UninstallDelete]
-; Generated at runtime, so Setup does not know about them. Everything listed
-; here was either installed by Setup or produced by running it — the guest
-; database, face images and .env are deliberately left behind.
-Type: filesandordirs; Name: "{app}\data\logs"
-Type: filesandordirs; Name: "{app}\data\run"
-Type: filesandordirs; Name: "{app}\runtime"
-Type: filesandordirs; Name: "{app}\models"
-Type: filesandordirs; Name: "{app}\services"
-Type: filesandordirs; Name: "{app}\web"
-Type: filesandordirs; Name: "{app}\scripts"
-Type: filesandordirs; Name: "{app}\db"
-Type: filesandordirs; Name: "{app}\debug"
+Filename: "{app}\scripts\run-update.cmd"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent; Description: "اعمال به‌روزرسانی و راه‌اندازی سامانه"
 
 [Code]
-// Nothing to check before installing: Python, every package and the
-// recognition models travel inside this package.
+{ Where the earlier releases put themselves, newest layout first. Used as the
+  default directory, so a /DIR= on the command line still takes precedence. }
+function ExistingInstallation(Param: String): String;
+var
+  candidates: array[0..3] of String;
+  i: Integer;
+begin
+  candidates[0] := 'C:\HotelFaceID';
+  candidates[1] := ExpandConstant('{localappdata}\Programs\Hotel FaceID');
+  candidates[2] := ExpandConstant('{pf}\Hotel FaceID');
+  candidates[3] := ExpandConstant('{commonpf}\Hotel FaceID');
 
+  for i := 0 to 3 do
+    { A database or a settings file marks a real installation, as opposed to
+      an empty folder somebody happened to create. }
+    if FileExists(candidates[i] + '\data\hotel_faceid.db') or
+       FileExists(candidates[i] + '\.env') then
+    begin
+      Result := candidates[i];
+      exit;
+    end;
+
+  Result := 'C:\HotelFaceID';
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if WizardSilent() then
+    exit;
+
+  if ExistingInstallation('') = 'C:\HotelFaceID' then
+    if not FileExists('C:\HotelFaceID\.env') then
+      MsgBox('نصب قبلی سامانه به‌طور خودکار پیدا نشد.' + #13#10 +
+             'اگر سامانه در مسیر دیگری نصب است، در صفحهٔ انتخاب مسیر همان پوشه را بدهید.' + #13#10 +
+             'اگر سامانه اصلاً نصب نیست، به‌جای این فایل از نصب‌کنندهٔ کامل استفاده کنید.',
+             mbInformation, MB_OK);
+end;

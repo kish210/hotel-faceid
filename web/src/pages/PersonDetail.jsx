@@ -60,6 +60,8 @@ export default function PersonDetail() {
           gender: p.gender || "unknown",
           room_number: p.room_number || "",
           phone: p.phone || "",
+          alarm_enabled: !!p.alarm_enabled,
+          alarm_note: p.alarm_note || "",
         });
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -165,6 +167,27 @@ export default function PersonDetail() {
                 <Label>شماره تماس</Label>
                 <Input value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
               </div>
+              <div className="border-destructive/40 grid gap-2 rounded-md border p-3">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={!!draft.alarm_enabled}
+                    onChange={(e) => setDraft({ ...draft, alarm_enabled: e.target.checked })}
+                  />
+                  فرد تحت نظر (هشدار هنگام تشخیص)
+                </label>
+                <p className="text-muted-foreground text-xs">
+                  با هر بار شناسایی این فرد، هشدار برای پذیرش و حراست نمایش داده می‌شود.
+                </p>
+                {draft.alarm_enabled && (
+                  <Input
+                    placeholder="علت — مثلاً سابقهٔ سرقت، بدهی، ممنوع‌الورود"
+                    value={draft.alarm_note || ""}
+                    onChange={(e) => setDraft({ ...draft, alarm_note: e.target.value })}
+                  />
+                )}
+              </div>
+
               <Button onClick={save} disabled={saving}>
                 <Save className="size-4" />
                 {saving ? "در حال ذخیره…" : "ذخیره تغییرات"}

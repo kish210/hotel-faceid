@@ -8,6 +8,8 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Guests from "./pages/Guests.jsx";
 import PersonDetail from "./pages/PersonDetail.jsx";
 import Cameras from "./pages/Cameras.jsx";
+import Alerts from "./pages/Alerts.jsx";
+import Modules from "./pages/Modules.jsx";
 import Reports from "./pages/Reports.jsx";
 import FaceSearch from "./pages/FaceSearch.jsx";
 import Users from "./pages/Users.jsx";
@@ -39,6 +41,8 @@ createRoot(document.getElementById("root")).render(
               <Route path="guests" element={<Guests />} />
               <Route path="persons/:id" element={<PersonDetail />} />
               <Route path="cameras" element={<Cameras />} />
+              <Route path="alerts" element={<Alerts />} />
+              <Route path="modules" element={<Modules />} />
               <Route path="reports" element={<Reports />} />
               <Route path="face-search" element={<FaceSearch />} />
               <Route path="users" element={<Users />} />
