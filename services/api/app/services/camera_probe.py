@@ -32,6 +32,12 @@ log = logging.getLogger(__name__)
 
 TIMEOUT = (3.0, 5.0)
 
+# TOPSEE OEM boards — TH38J and the rest of the TH series — plus the Hisilicon
+# chip names integrators leave behind in the ONVIF model string. These boards
+# are sold under whatever name is printed on the housing, so the model string
+# is the only reliable giveaway.
+TOPSEE_MODEL = re.compile(r"\bTH\d{2}[A-Z]?\d?\b|topsee|tpsee|hi35\d{2}", re.I)
+
 # Devices whose model name matches this run face detection on the edge, so the
 # "use the camera's own engine" switch is worth offering for them.
 FACE_CAPABLE = re.compile(
@@ -92,6 +98,7 @@ def default_rtsp_path(brand: CameraBrand) -> str | None:
         CameraBrand.dahua: "/cam/realmonitor?channel=1&subtype=0",
         CameraBrand.axis: "/axis-media/media.amp",
         CameraBrand.foscam: "/videoMain",
+        CameraBrand.topsee: "/0",
     }.get(brand)
 
 
@@ -226,16 +233,24 @@ def _probe_onvif(host: str, port: int, username: str | None, password: str | Non
         return None
 
     manufacturer = (_xml(response.text, "Manufacturer") or "").lower()
+    model = _xml(response.text, "Model") or ""
     brand = CameraBrand.onvif
     for known, value in (
         ("hikvision", CameraBrand.hikvision),
         ("dahua", CameraBrand.dahua),
         ("axis", CameraBrand.axis),
         ("foscam", CameraBrand.foscam),
+        ("topsee", CameraBrand.topsee),
+        ("tpsee", CameraBrand.topsee),
     ):
         if known in manufacturer:
             brand = value
             break
+    else:
+        # OEM boards (TH38J and relatives) answer ONVIF with the integrator's
+        # own name, or none at all — the model string is the real giveaway.
+        if TOPSEE_MODEL.search(model) or TOPSEE_MODEL.search(manufacturer):
+            brand = CameraBrand.topsee
 
     return Device(
         brand=brand,

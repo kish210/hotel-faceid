@@ -58,6 +58,7 @@ Source: "{#Root}\services\api\fonts\*"; DestDir: "{app}\services\api\fonts"; Fla
 Source: "{#Root}\services\face-service\requirements.txt"; DestDir: "{app}\services\face-service"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\app\*.py"; DestDir: "{app}\services\face-service\app"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\app\cameras\*.py"; DestDir: "{app}\services\face-service\app\cameras"; Flags: ignoreversion
+Source: "{#Root}\services\face-service\app\analytics\*.py"; DestDir: "{app}\services\face-service\app\analytics"; Flags: ignoreversion
 Source: "{#Root}\services\face-service\tests\*.py"; DestDir: "{app}\services\face-service\tests"; Flags: ignoreversion
 
 ; ---- bundled Python runtime and recognition models ----

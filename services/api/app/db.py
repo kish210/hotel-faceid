@@ -134,7 +134,10 @@ def _add_missing_columns() -> None:
             )
         if postgres and "cameras" in tables:
             # Brands added after the schema was first created.
-            connection.execute(text("ALTER TYPE camera_brand ADD VALUE IF NOT EXISTS 'axis'"))
+            for brand in ("axis", "foscam", "topsee"):
+                connection.execute(
+                    text(f"ALTER TYPE camera_brand ADD VALUE IF NOT EXISTS '{brand}'")
+                )
 
         for table, columns in additions.items():
             if table not in tables:

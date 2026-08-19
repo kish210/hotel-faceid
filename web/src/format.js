@@ -36,6 +36,7 @@ export const BRAND_LABELS = {
   dahua: "Dahua",
   axis: "Axis",
   foscam: "Foscam",
+  topsee: "TOPSEE / برد چینی (TH38J)",
   onvif: "ONVIF (عمومی)",
   generic: "سایر",
 };

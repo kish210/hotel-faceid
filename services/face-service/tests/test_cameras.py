@@ -2,9 +2,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.cameras.axis import AxisCamera
-from app.cameras.base import CameraConfig
+from app.cameras.base import CameraConfig, describe_rtsp
 from app.cameras.dahua import DahuaCamera
 from app.cameras.hikvision import HikvisionCamera
+from app.cameras.topsee import TopseeCamera
 
 
 def make(cls, purpose="bidirectional"):
@@ -159,6 +160,96 @@ def test_axis_purpose_overrides_payload_direction():
     assert event.image == jpeg
 
 
+# ----------------------------------------------------------------- TOPSEE
+def test_topsee_uses_a_configured_url_verbatim():
+    cfg = CameraConfig(
+        id="cam1", name="lobby", brand="topsee", purpose="entry",
+        host="192.168.1.50", rtsp_url="rtsp://192.168.1.50:554/custom",
+    )
+    assert TopseeCamera(cfg).rtsp_url() == "rtsp://192.168.1.50:554/custom"
+
+
+def test_topsee_probes_paths_when_onvif_is_silent():
+    cam = make(TopseeCamera)
+    tried = []
+
+    def answer(url, timeout=3.0):
+        tried.append(url)
+        return url.endswith("/11")  # this board happens to use /11
+
+    with patch.object(TopseeCamera, "_discover_stream_uri", return_value=None), \
+         patch("app.cameras.topsee.describe_rtsp", side_effect=answer):
+        url = cam.rtsp_url()
+
+    assert url.endswith("/11"), url
+    assert tried[0].endswith("/0"), "the most common path should be tried first"
+
+
+def test_topsee_remembers_the_path_it_found():
+    cam = make(TopseeCamera)
+    calls = []
+
+    def answer(url, timeout=3.0):
+        calls.append(url)
+        return url.endswith("/onvif1")
+
+    with patch.object(TopseeCamera, "_discover_stream_uri", return_value=None), \
+         patch("app.cameras.topsee.describe_rtsp", side_effect=answer):
+        first = cam.rtsp_url()
+        probed = len(calls)
+        second = cam.rtsp_url()
+
+    assert first == second
+    assert len(calls) == probed, "a second call must not probe again"
+
+
+def test_topsee_falls_back_when_nothing_answers():
+    cam = make(TopseeCamera)
+    with patch.object(TopseeCamera, "_discover_stream_uri", return_value=None), \
+         patch("app.cameras.topsee.describe_rtsp", return_value=False):
+        # The worker's reconnect loop is a better place to give up than here.
+        assert cam.rtsp_url().endswith("/0")
+
+
+def test_topsee_prefers_onvif_discovery():
+    cam = make(TopseeCamera)
+    with patch.object(
+        TopseeCamera, "_discover_stream_uri", return_value="rtsp://from-onvif/stream"
+    ), patch("app.cameras.topsee.describe_rtsp") as probe:
+        assert cam.rtsp_url() == "rtsp://from-onvif/stream"
+        probe.assert_not_called()
+
+
+def test_describe_rtsp_accepts_401():
+    # An unauthenticated DESCRIBE proves the path exists; the real client
+    # negotiates credentials afterwards.
+    import socket as socket_module
+
+    class FakeSocket:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def settimeout(self, _): pass
+        def sendall(self, _): pass
+        def recv(self, _): return b"RTSP/1.0 401 Unauthorized\r\n\r\n"
+
+    with patch.object(socket_module, "create_connection", return_value=FakeSocket()):
+        assert describe_rtsp("rtsp://192.168.1.50:554/0") is True
+
+
+def test_describe_rtsp_rejects_404():
+    import socket as socket_module
+
+    class FakeSocket:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def settimeout(self, _): pass
+        def sendall(self, _): pass
+        def recv(self, _): return b"RTSP/1.0 404 Not Found\r\n\r\n"
+
+    with patch.object(socket_module, "create_connection", return_value=FakeSocket()):
+        assert describe_rtsp("rtsp://192.168.1.50:554/nope") is False
+
+
 if __name__ == "__main__":
     test_hikvision_face()
     test_hikvision_motion_ignored()
@@ -169,6 +260,13 @@ if __name__ == "__main__":
     test_dahua_motion_ignored()
     test_dahua_exit_direction()
     test_dahua_snapshot_used_as_image()
+    test_topsee_uses_a_configured_url_verbatim()
+    test_topsee_probes_paths_when_onvif_is_silent()
+    test_topsee_remembers_the_path_it_found()
+    test_topsee_falls_back_when_nothing_answers()
+    test_topsee_prefers_onvif_discovery()
+    test_describe_rtsp_accepts_401()
+    test_describe_rtsp_rejects_404()
     test_axis_rtsp_url()
     test_axis_object_analytics_event()
     test_axis_inactive_state_ignored()

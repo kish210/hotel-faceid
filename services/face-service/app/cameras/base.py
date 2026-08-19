@@ -10,15 +10,54 @@ from __future__ import annotations
 
 import logging
 import re
+import socket
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from requests.auth import HTTPDigestAuth
 
 log = logging.getLogger(__name__)
+
+
+def describe_rtsp(url: str, timeout: float = 3.0) -> bool:
+    """Does anything answer an RTSP DESCRIBE at this URL?
+
+    Used to find the stream path on OEM boards that ship with a different one
+    depending on whose firmware is loaded. Opening the stream with OpenCV to
+    find out would cost seconds per attempt and spawn an ffmpeg pipeline each
+    time; one DESCRIBE is a few bytes and answers immediately.
+
+    A 401 counts as success: the path exists, the credentials are simply being
+    negotiated, and the real client will do that properly.
+    """
+    parsed = urlparse(url)
+    host, port = parsed.hostname, parsed.port or 554
+    if not host:
+        return False
+
+    target = url if not parsed.password else url.replace(f":{parsed.password}@", ":***@")
+    request = (
+        f"DESCRIBE {url} RTSP/1.0\r\n"
+        "CSeq: 1\r\n"
+        "Accept: application/sdp\r\n"
+        "User-Agent: HotelFaceID\r\n\r\n"
+    )
+
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as connection:
+            connection.settimeout(timeout)
+            connection.sendall(request.encode())
+            reply = connection.recv(256).decode("latin-1", errors="ignore")
+    except OSError:
+        return False
+
+    ok = reply.startswith("RTSP/1.0 200") or reply.startswith("RTSP/1.0 401")
+    log.debug("DESCRIBE %s -> %s", target, reply.splitlines()[0] if reply else "no reply")
+    return ok
 
 
 @dataclass(slots=True)

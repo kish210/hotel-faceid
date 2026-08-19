@@ -31,6 +31,7 @@ class CameraBrand(str, enum.Enum):
     hikvision = "hikvision"
     axis = "axis"
     foscam = "foscam"
+    topsee = "topsee"
     onvif = "onvif"
     generic = "generic"
 

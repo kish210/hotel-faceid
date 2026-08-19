@@ -25,22 +25,45 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 
 # --------------------------------------------------------------- 1. runtime
-Write-Host "[1/4] موتور اجرا" -ForegroundColor Green
+Write-Host "[1/4] موتور اجرا و مدل‌ها" -ForegroundColor Green
 $python = Get-AppPython -Root $InstallDir
+$models = Join-Path $InstallDir "models\buffalo_l"
+$fetcher = Join-Path $PSScriptRoot "fetch-payload.ps1"
+
+# The small installer carries the application only; the runtime and the models
+# are fetched once, here, so the file people download stays a few megabytes.
+$needsRuntime = -not ($python -and $python -like "*runtime\python\python.exe")
+$needsModels = -not (Test-Path -LiteralPath $models)
+
+if (($needsRuntime -or $needsModels) -and (Test-Path -LiteralPath $fetcher)) {
+    Write-Host "      اجزای لازم روی این سیستم نیست و یک‌بار دانلود می‌شوند." -ForegroundColor Yellow
+    Write-Host "      حجم تقریبی: ۴۸۰ مگابایت — بسته به سرعت اینترنت ممکن است طول بکشد." -ForegroundColor Yellow
+    Write-Host "      اگر وسط کار قطع شد، همین گزینه را دوباره اجرا کنید؛ از همان‌جا ادامه می‌دهد." -ForegroundColor DarkGray
+    Write-Host ""
+    try {
+        & $fetcher -Component "both"
+    } catch {
+        Write-Host ""
+        Write-Host "      دانلود اجزا کامل نشد: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "      اتصال اینترنت را بررسی و «راه‌اندازی» را دوباره اجرا کنید." -ForegroundColor Red
+        exit 1
+    }
+    $python = Get-AppPython -Root $InstallDir
+    $needsModels = -not (Test-Path -LiteralPath $models)
+}
 
 if ($python -and $python -like "*runtime\python\python.exe") {
-    Write-Host "      موتور پایتون همراه نصب استفاده می‌شود (نیازی به نصب چیزی نیست)." -ForegroundColor Green
-} else {
+    Write-Host "      موتور پایتون آماده است (نیازی به نصب چیزی نیست)." -ForegroundColor Green
+} elseif (-not $python) {
     Write-Host "      موتور همراه پیدا نشد؛ ساخت محیط مجازی از روی پایتون سیستم..." -ForegroundColor Yellow
     $python = Build-DeveloperVenv -InstallDir $InstallDir
     if (-not $python) { exit 1 }
 }
 
-$models = Join-Path $InstallDir "models\buffalo_l"
-if (Test-Path -LiteralPath $models) {
-    Write-Host "      مدل‌های تشخیص چهره همراه نصب موجود است." -ForegroundColor Green
+if (-not $needsModels) {
+    Write-Host "      مدل‌های تشخیص چهره آماده است." -ForegroundColor Green
 } else {
-    Write-Host "      مدل‌ها همراه نصب نیستند؛ در اولین اجرا دانلود می‌شوند (نیاز به اینترنت)." -ForegroundColor Yellow
+    Write-Host "      مدل‌ها پیدا نشد؛ در اولین اجرا دانلود می‌شوند (نیاز به اینترنت)." -ForegroundColor Yellow
 }
 
 # ------------------------------------------------------------------- 2. web

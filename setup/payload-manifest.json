@@ -1,0 +1,63 @@
+﻿{
+    "version":  1,
+    "base_url":  "https://github.com/kish210/hotel-faceid/releases/download/payload-v1",
+    "parts":  {
+                  "runtime":  {
+                                  "archive_size":  215629589,
+                                  "archive_sha256":  "8f538b6837073efe12eb012049e242dbf917af0a2d4373cdc510d40643fd33ca",
+                                  "parts":  [
+                                                {
+                                                    "name":  "runtime.zip.001",
+                                                    "size":  67108864,
+                                                    "sha256":  "7aeef2f7addb300464c23c1b3d1b8e73b10f79c606cbf74c6072d21f046797ce"
+                                                },
+                                                {
+                                                    "name":  "runtime.zip.002",
+                                                    "size":  67108864,
+                                                    "sha256":  "87e275a689d34cf2b4159716c4d4b83cfa83f9563bec2b0ec49805e99b122416"
+                                                },
+                                                {
+                                                    "name":  "runtime.zip.003",
+                                                    "size":  67108864,
+                                                    "sha256":  "7db98cf812a6376fb34ead011da506e7d065d11a93de7b164ada1c301aeca68c"
+                                                },
+                                                {
+                                                    "name":  "runtime.zip.004",
+                                                    "size":  14302997,
+                                                    "sha256":  "cde522871aac2d72420925e3960b69df9abf3467723a9c12ac4901a2b5181f5d"
+                                                }
+                                            ]
+                              },
+                  "models":  {
+                                 "archive_size":  289844322,
+                                 "archive_sha256":  "c4576bfe98c6a9b4d93b4b9e8ce90263ffea2ca7f7945b11c8287764c05e9da8",
+                                 "parts":  [
+                                               {
+                                                   "name":  "models.zip.001",
+                                                   "size":  67108864,
+                                                   "sha256":  "e61de1ba47e52c91b9ae032fc4cbce62a3c01d87d9a4afb9a30140ab69bc00d3"
+                                               },
+                                               {
+                                                   "name":  "models.zip.002",
+                                                   "size":  67108864,
+                                                   "sha256":  "9e574dfe54ca438879916d514a8bf3c620557e367d83640f178384fbff1e5549"
+                                               },
+                                               {
+                                                   "name":  "models.zip.003",
+                                                   "size":  67108864,
+                                                   "sha256":  "b735a1a72e064d5afebfd7569710e4d0c5760dd1a5345499f03913a9b9408fef"
+                                               },
+                                               {
+                                                   "name":  "models.zip.004",
+                                                   "size":  67108864,
+                                                   "sha256":  "3156737ff98699ddf3c3028e22a974cb7e27be02a0907bf5eb8000ec69023264"
+                                               },
+                                               {
+                                                   "name":  "models.zip.005",
+                                                   "size":  21408866,
+                                                   "sha256":  "8e926bccc31fa0f720edbc27890901a95f71bf314e5a22f7aa20ce03e70a44ea"
+                                               }
+                                           ]
+                             }
+              }
+}

@@ -47,7 +47,7 @@ CREATE TABLE face_embeddings (
 CREATE INDEX idx_face_embeddings_person ON face_embeddings(person_id);
 
 -- ---------------------------------------------------------------- cameras
-CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'axis', 'foscam', 'onvif', 'generic');
+CREATE TYPE camera_brand   AS ENUM ('dahua', 'hikvision', 'axis', 'foscam', 'topsee', 'onvif', 'generic');
 CREATE TYPE camera_purpose AS ENUM ('entry', 'exit', 'bidirectional', 'monitor');
 
 CREATE TABLE cameras (
