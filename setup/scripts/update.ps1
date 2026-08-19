@@ -100,6 +100,17 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     }
 }
 
+# An installation whose API was moved off port 8000 kept an API_BASE_URL
+# pointing at the old one, and the capture service then talks to nothing —
+# no faces are ever recognised, with no error in the panel to show for it.
+$apiPort = Get-EnvValue -Root $root -Key "API_PORT" -Default "8000"
+$baseUrl = Get-EnvValue -Root $root -Key "API_BASE_URL"
+if ($baseUrl -and $baseUrl -match "^https?://(localhost|127\.0\.0\.1):(\d+)" -and $Matches[2] -ne $apiPort) {
+    $content = (Get-Content -LiteralPath $envPath -Raw) -replace "(?m)^API_BASE_URL=.*$", "API_BASE_URL="
+    Set-Content -LiteralPath $envPath -Value $content -Encoding utf8 -NoNewline
+    Write-Host "      آدرس داخلی سرویس با پورت $apiPort هماهنگ شد." -ForegroundColor Yellow
+}
+
 # An install that ran with an empty encryption key stored camera passwords as
 # plain text. Generating one now is the fix, and the API re-encrypts on save.
 $python = Get-AppPython -Root $root
@@ -137,5 +148,17 @@ foreach ($folder in @("data\media", "data\logs", "data\run", "data\modules")) {
 # ----------------------------------------------------------------- 5. start
 Write-Host ""
 Write-Host "[5/5] راه‌اندازی مجدد" -ForegroundColor Green
+
+# The small update package assumes the machine already has these; say so
+# plainly instead of letting the services fail with an import error.
+if (-not (Get-AppPython -Root $root)) {
+    Write-Host "      موتور پایتون روی این سیستم پیدا نشد." -ForegroundColor Red
+    Write-Host "      این بستهٔ به‌روزرسانیِ کوچک است و موتور اجرا را همراه ندارد؛" -ForegroundColor Red
+    Write-Host "      لطفاً از فایل نصب کامل (Hotel-FaceID-Setup) استفاده کنید." -ForegroundColor Red
+    exit 1
+}
+if (-not (Test-Path -LiteralPath (Join-Path $root "models\buffalo_l"))) {
+    Write-Host "      مدل‌های تشخیص چهره پیدا نشد؛ در اولین اجرا دانلود می‌شوند." -ForegroundColor Yellow
+}
 Write-Host "      (اولین اجرا چند ثانیه طول می‌کشد: ستون‌های جدید به پایگاه داده اضافه می‌شوند)" -ForegroundColor DarkGray
 & (Join-Path $PSScriptRoot "start.ps1")

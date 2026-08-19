@@ -1,12 +1,18 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_base_url: str = "http://localhost:8000"
+    # Left empty, this follows API_PORT — the two settings drifting apart is
+    # otherwise silent: the API moves to another port and the capture service
+    # keeps calling the old one, so nothing is ever recognised. Set it
+    # explicitly only when the API runs on a different machine.
+    api_base_url: str = ""
+    api_port: int = 8000
     service_api_key: str = "change-me-service-key"
 
     # Detection / quality gates
@@ -42,6 +48,13 @@ class Settings(BaseSettings):
     # HTTP embed API (used for photo-based guest search)
     embed_api_host: str = "0.0.0.0"
     embed_api_port: int = 8001
+
+
+    @model_validator(mode="after")
+    def _follow_api_port(self) -> "Settings":
+        if not self.api_base_url:
+            self.api_base_url = f"http://localhost:{self.api_port}"
+        return self
 
 
 @lru_cache
