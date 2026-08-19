@@ -65,6 +65,18 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
+def _autoincrement_pk() -> Mapped[int]:
+    """Auto-numbering primary key that works on both engines.
+
+    SQLite only auto-assigns rowids to a column declared exactly `INTEGER
+    PRIMARY KEY`; a BIGINT one is left NULL and the insert fails. Postgres
+    keeps BIGSERIAL, matching db/init/001_schema.sql.
+    """
+    return mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+
+
 def _enum(enum_cls, name: str) -> Enum:
     # native_enum=False keeps the schema portable across SQLite and Postgres.
     return Enum(enum_cls, name=name, native_enum=False, values_callable=lambda e: [i.value for i in e])
@@ -145,7 +157,7 @@ class Camera(Base):
 class Event(Base):
     __tablename__ = "events"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = _autoincrement_pk()
     person_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("persons.id", ondelete="CASCADE"), index=True
     )
@@ -193,7 +205,7 @@ class User(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = _autoincrement_pk()
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
     action: Mapped[str] = mapped_column(Text)
     entity: Mapped[str | None] = mapped_column(Text)

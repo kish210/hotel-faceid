@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -16,6 +17,20 @@ import numpy as np
 from .config import settings
 
 log = logging.getLogger(__name__)
+
+
+def _model_root() -> Path | None:
+    """Where InsightFace should look for `models/<pack>`.
+
+    An explicit MODEL_ROOT wins. Otherwise the working directory is tried,
+    which is where the packaged installation keeps its bundled models; None
+    means "let InsightFace use its own default and download on demand".
+    """
+    if settings.model_root:
+        return Path(settings.model_root)
+
+    candidate = Path.cwd()
+    return candidate if (candidate / "models" / settings.model_pack).is_dir() else None
 
 
 @dataclass(slots=True)
@@ -39,10 +54,20 @@ class FaceEngine:
         if settings.gender_detection:
             modules.append("genderage")
 
+        kwargs = {}
+        root = _model_root()
+        if root is not None:
+            # Without this the models are downloaded into the user's home on
+            # first run — the packaged build ships them instead, so an offline
+            # machine still works.
+            kwargs["root"] = str(root)
+            log.info("Using bundled models from %s", root / "models" / settings.model_pack)
+
         self.app = FaceAnalysis(
             name=settings.model_pack,
             providers=[settings.onnx_provider],
             allowed_modules=modules,
+            **kwargs,
         )
         # ctx_id -1 selects CPU; any >= 0 selects that GPU device.
         ctx_id = 0 if "CUDA" in settings.onnx_provider else -1

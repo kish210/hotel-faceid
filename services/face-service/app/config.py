@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     onnx_provider: str = "CPUExecutionProvider"
     model_pack: str = "buffalo_l"
     det_size: int = 640
+    # Folder holding a `models/<pack>` directory. Empty means "look next to the
+    # installation, then fall back to InsightFace's own ~/.insightface".
+    model_root: str = ""
 
     # Stream handling
     reconnect_delay_seconds: int = 5

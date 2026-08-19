@@ -15,3 +15,6 @@ media/
 # runtime state of a local install
 data/
 debug/
+
+# build payload for the installer (bundled Python runtime + models)
+setup/payload/

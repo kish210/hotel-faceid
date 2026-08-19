@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -45,7 +46,14 @@ def get_current_user(
     except jwt.PyJWTError as exc:
         raise credentials_error from exc
 
-    user = db.get(User, payload.get("sub"))
+    # The subject is a string inside the token; SQLite's UUID column rejects
+    # anything that is not a real UUID object, so convert before looking up.
+    try:
+        user_id = uuid.UUID(str(payload.get("sub")))
+    except (ValueError, TypeError) as exc:
+        raise credentials_error from exc
+
+    user = db.get(User, user_id)
     if user is None or not user.active:
         raise credentials_error
     return user
