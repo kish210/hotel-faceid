@@ -77,6 +77,46 @@ function Get-Part {
     throw "دانلود $Name پس از چند تلاش ناموفق ماند"
 }
 
+function Expand-Archive-Overwriting {
+    <#
+        Unpacks entry by entry rather than calling ExtractToDirectory.
+
+        Windows PowerShell 5.1 runs on .NET Framework, whose
+        ExtractToDirectory has no "overwrite" parameter — its third argument is
+        an encoding, so passing $true there fails with a cast error. ExtractToFile
+        does take one, so extracting the entries individually works on every
+        Windows version this ships to, and lets a re-run repair a half-finished
+        unpack instead of stopping on the first existing file.
+    #>
+    param([Parameter(Mandatory)][string]$Archive, [Parameter(Mandatory)][string]$Target)
+
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Archive)
+    try {
+        $total = $zip.Entries.Count
+        $done = 0
+        foreach ($entry in $zip.Entries) {
+            $destination = Join-Path $Target $entry.FullName
+            $parent = Split-Path -Parent $destination
+            if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+                New-Item -ItemType Directory -Force -Path $parent | Out-Null
+            }
+            # A directory entry has an empty name and nothing to write.
+            if ($entry.Name) {
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destination, $true)
+            }
+
+            $done++
+            if ($done % 500 -eq 0) {
+                Write-Host ("`r      {0} از {1} فایل" -f $done, $total) -NoNewline -ForegroundColor DarkGray
+            }
+        }
+        Write-Host ("`r      {0} فایل باز شد            " -f $total) -ForegroundColor DarkGray
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+
 function Install-Component {
     param([string]$Name)
 
@@ -115,7 +155,7 @@ function Install-Component {
     Write-Host "      باز کردن فایل‌ها" -ForegroundColor DarkGray
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     New-Item -ItemType Directory -Force -Path $target | Out-Null
-    [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $target, $true)
+    Expand-Archive-Overwriting -Archive $archive -Target $target
 
     Remove-Item $archive -Force -ErrorAction SilentlyContinue
     # The parts are only useful for a re-run; once unpacked they are dead weight.
