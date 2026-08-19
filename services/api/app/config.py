@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     module_registry_url: str = (
         "https://raw.githubusercontent.com/kish210/hotel-faceid/master/modules/catalogue.json"
     )
-    # Needed only because the repository is private — a read-only token.
+    # The public repository needs no credentials; this is only for a private
+    # fork, paired with a MODULE_REGISTRY_URL pointing at it.
     module_registry_token: str = ""
     # Built React panel. Empty means "the web/dist folder next to this repo",
     # which is where `npm run build` puts it.
