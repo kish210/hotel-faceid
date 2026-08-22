@@ -2,7 +2,7 @@
 ; Requires Inno Setup 6.3+
 
 #define MyAppName "Hotel Face-ID"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "Hotel Face-ID"
 #define MyAppExeName "start-install.ps1"
 #define Root "D:\code\ocr"

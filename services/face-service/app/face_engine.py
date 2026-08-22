@@ -95,7 +95,8 @@ class FaceEngine:
             if crop.size == 0:
                 continue
 
-            quality = _quality_score(crop, face.det_score)
+            pose = getattr(face, "pose", None)
+            quality = _quality_score(crop, face.det_score, pose)
             embedding = face.normed_embedding.astype(np.float32)
 
             results.append(
@@ -142,11 +143,17 @@ def _safe_crop(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int, margin: fl
     ]
 
 
-def _quality_score(crop: np.ndarray, det_score: float) -> float:
-    """Combine sharpness and exposure into a 0..1 usability score.
+def _quality_score(crop: np.ndarray, det_score: float, pose=None) -> float:
+    """Combine sharpness, exposure and head angle into a 0..1 usability score.
 
-    A blurry or badly exposed crop still yields an embedding, but a poor one —
-    scoring it lets the API skip enrolling it as a reference vector.
+    A blurry, badly exposed, or heavily rotated crop still yields an embedding,
+    but a poor one — scoring it lets the API skip enrolling it as a reference
+    vector.
+
+    Head pose (yaw and pitch in degrees) is factored in when InsightFace
+    provides it.  A frontal face scores 1.0 on the pose dimension; each degree
+    beyond ``MAX_HEAD_ANGLE`` reduces the score linearly to 0.0 at twice that
+    angle.
     """
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
 
@@ -155,6 +162,20 @@ def _quality_score(crop: np.ndarray, det_score: float) -> float:
     # Penalise crops that are nearly black or blown out.
     brightness = float(gray.mean()) / 255.0
     exposure = 1.0 - abs(brightness - 0.5) * 2
+
+    # Head angle penalty using RetinaFace pose (pitch, yaw, roll in degrees).
+    if pose is not None:
+        try:
+            pitch = float(pose[0])
+            yaw = float(pose[1])
+            max_angle = float(settings.max_head_angle)
+            # Map [0, max_angle] → 1.0 and [max_angle, 2*max_angle] → 0.0.
+            yaw_factor = max(0.0, 1.0 - max(0.0, abs(yaw) - max_angle) / max(max_angle, 1.0))
+            pitch_factor = max(0.0, 1.0 - max(0.0, abs(pitch) - max_angle) / max(max_angle, 1.0))
+            pose_score = yaw_factor * pitch_factor
+        except (TypeError, IndexError):
+            pose_score = 1.0
+        return round(float(0.4 * sharpness + 0.25 * exposure + 0.15 * det_score + 0.2 * pose_score), 4)
 
     return round(float(0.5 * sharpness + 0.3 * exposure + 0.2 * det_score), 4)
 
