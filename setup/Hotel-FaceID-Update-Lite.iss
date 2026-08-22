@@ -13,7 +13,7 @@
 ; and hands over to scripts\update.ps1 for the migration.
 
 #define MyAppName "Hotel Face-ID"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "Hotel Face-ID"
 #define Root "D:\code\ocr"
 #define Payload Root + "\setup\payload"

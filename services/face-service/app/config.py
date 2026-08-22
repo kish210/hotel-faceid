@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Detection / quality gates
     face_detect_threshold: float = 0.6
     min_face_size: int = 60
+    # Maximum head yaw/pitch in degrees before the quality score starts to
+    # drop.  Faces beyond 2× this angle score near zero and are rarely enrolled
+    # as reference vectors — they produce poor embeddings anyway.
+    max_head_angle: float = 40.0
     frame_sample_rate: int = 5
 
     # Gender / age estimation (InsightFace genderage model)
